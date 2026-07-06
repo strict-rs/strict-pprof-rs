@@ -174,11 +174,10 @@ impl super::Trace for Trace {
     // For Linux, this `try_write` should always succeed, because `SIGPROF` will never be delivered to
     // another thread while the signal handler is running. However, I'm not sure about other OSes, so
     // we use `try_write` to be safe instead of using `static mut` and `unsafe` directly.
-    match UNWINDER.try_write() {
-      None => return,
-      Some(mut unwinder) => {
-        unwinder.iter_frames(ctx, cb);
-      }
-    }
+    let Some(mut unwinder) = UNWINDER.try_write() else {
+      return;
+    };
+
+    unwinder.iter_frames(ctx, cb);
   }
 }

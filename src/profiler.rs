@@ -335,92 +335,95 @@ impl Drop for ErrnoProtector {
 extern "C" fn perf_signal_handler(_signal: c_int, _siginfo: *mut libc::siginfo_t, ucontext: *mut libc::c_void) {
   let _errno = ErrnoProtector::new();
 
-  if let Some(mut guard) = PROFILER.try_write() {
-    if let Ok(profiler) = guard.as_mut() {
-      #[cfg(any(
-        target_arch = "x86_64",
-        target_arch = "aarch64",
-        target_arch = "riscv64",
-        target_arch = "loongarch64"
-      ))]
-      if !ucontext.is_null() {
-        let ucontext: *mut libc::ucontext_t = ucontext as *mut libc::ucontext_t;
+  let Some(mut guard) = PROFILER.try_write() else {
+    return;
+  };
+  let Ok(profiler) = guard.as_mut() else {
+    return;
+  };
 
-        #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
-        let addr = unsafe { (*ucontext).uc_mcontext.gregs[libc::REG_RIP as usize] as usize };
+  #[cfg(any(
+    target_arch = "x86_64",
+    target_arch = "aarch64",
+    target_arch = "riscv64",
+    target_arch = "loongarch64"
+  ))]
+  if !ucontext.is_null() {
+    let ucontext: *mut libc::ucontext_t = ucontext as *mut libc::ucontext_t;
 
-        #[cfg(all(target_arch = "x86_64", target_os = "freebsd"))]
-        let addr = unsafe { (*ucontext).uc_mcontext.mc_rip as usize };
+    #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
+    let addr = unsafe { (*ucontext).uc_mcontext.gregs[libc::REG_RIP as usize] as usize };
 
-        #[cfg(all(target_arch = "x86_64", target_os = "macos"))]
-        let addr = unsafe {
-          let mcontext = (*ucontext).uc_mcontext;
-          if mcontext.is_null() {
-            0
-          } else {
-            (*mcontext).__ss.__rip as usize
-          }
-        };
+    #[cfg(all(target_arch = "x86_64", target_os = "freebsd"))]
+    let addr = unsafe { (*ucontext).uc_mcontext.mc_rip as usize };
 
-        #[cfg(all(target_arch = "aarch64", any(target_os = "android", target_os = "linux")))]
-        let addr = unsafe { (*ucontext).uc_mcontext.pc as usize };
-
-        #[cfg(all(target_arch = "aarch64", target_os = "freebsd"))]
-        let addr = unsafe { (*ucontext).mc_gpregs.gp_elr as usize };
-
-        #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
-        let addr = unsafe {
-          let mcontext = (*ucontext).uc_mcontext;
-          if mcontext.is_null() {
-            0
-          } else {
-            (*mcontext).__ss.__pc as usize
-          }
-        };
-
-        #[cfg(all(target_arch = "riscv64", target_os = "linux"))]
-        let addr = unsafe { (*ucontext).uc_mcontext.__gregs[libc::REG_PC] as usize };
-
-        #[cfg(all(target_arch = "loongarch64", target_os = "linux"))]
-        let addr = unsafe { (*ucontext).uc_mcontext.__pc as usize };
-
-        if profiler.is_blocklisted(addr) {
-          return;
-        }
+    #[cfg(all(target_arch = "x86_64", target_os = "macos"))]
+    let addr = unsafe {
+      let mcontext = (*ucontext).uc_mcontext;
+      if mcontext.is_null() {
+        0
+      } else {
+        (*mcontext).__ss.__rip as usize
       }
+    };
 
-      let mut bt: SmallVec<[<TraceImpl as Trace>::Frame; MAX_DEPTH]> = SmallVec::with_capacity(MAX_DEPTH);
-      let mut index = 0;
+    #[cfg(all(target_arch = "aarch64", any(target_os = "android", target_os = "linux")))]
+    let addr = unsafe { (*ucontext).uc_mcontext.pc as usize };
 
-      let sample_timestamp: SystemTime = SystemTime::now();
-      TraceImpl::trace(ucontext, |frame| {
-        #[cfg(pprof_frame_pointer_backend)]
-        {
-          let ip = crate::backtrace::Frame::ip(frame);
-          if profiler.is_blocklisted(ip) {
-            return false;
-          }
-        }
+    #[cfg(all(target_arch = "aarch64", target_os = "freebsd"))]
+    let addr = unsafe { (*ucontext).mc_gpregs.gp_elr as usize };
 
-        if index < MAX_DEPTH {
-          bt.push(frame.clone());
-          index += 1;
-          true
-        } else {
-          false
-        }
-      });
+    #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+    let addr = unsafe {
+      let mcontext = (*ucontext).uc_mcontext;
+      if mcontext.is_null() {
+        0
+      } else {
+        (*mcontext).__ss.__pc as usize
+      }
+    };
 
-      let current_thread = unsafe { libc::pthread_self() };
-      let mut name = [0; MAX_THREAD_NAME];
-      let name_ptr = &mut name as *mut [libc::c_char] as *mut libc::c_char;
+    #[cfg(all(target_arch = "riscv64", target_os = "linux"))]
+    let addr = unsafe { (*ucontext).uc_mcontext.__gregs[libc::REG_PC] as usize };
 
-      write_thread_name(current_thread, &mut name);
+    #[cfg(all(target_arch = "loongarch64", target_os = "linux"))]
+    let addr = unsafe { (*ucontext).uc_mcontext.__pc as usize };
 
-      let name = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
-      profiler.sample(bt, name.to_bytes(), current_thread as u64, sample_timestamp);
+    if profiler.is_blocklisted(addr) {
+      return;
     }
   }
+
+  let mut bt: SmallVec<[<TraceImpl as Trace>::Frame; MAX_DEPTH]> = SmallVec::with_capacity(MAX_DEPTH);
+  let mut index = 0;
+
+  let sample_timestamp: SystemTime = SystemTime::now();
+  TraceImpl::trace(ucontext, |frame| {
+    #[cfg(pprof_frame_pointer_backend)]
+    {
+      let ip = crate::backtrace::Frame::ip(frame);
+      if profiler.is_blocklisted(ip) {
+        return false;
+      }
+    }
+
+    if index < MAX_DEPTH {
+      bt.push(frame.clone());
+      index += 1;
+      true
+    } else {
+      false
+    }
+  });
+
+  let current_thread = unsafe { libc::pthread_self() };
+  let mut name = [0; MAX_THREAD_NAME];
+  let name_ptr = &mut name as *mut [libc::c_char] as *mut libc::c_char;
+
+  write_thread_name(current_thread, &mut name);
+
+  let name = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
+  profiler.sample(bt, name.to_bytes(), current_thread as u64, sample_timestamp);
 }
 
 impl Profiler {
@@ -539,6 +542,8 @@ impl Profiler {
 pub mod tests {
   use super::*;
 
+  const NO_ALLOC_PROBE_CHILD_ENV: &str = "PPROF_NO_ALLOC_PROBE_CHILD";
+
   struct AllocDetector {
     should_count_alloc: std::sync::atomic::AtomicBool,
     alloc_count:        std::sync::atomic::AtomicUsize,
@@ -566,8 +571,29 @@ pub mod tests {
       self.should_count_alloc.store(false, std::sync::atomic::Ordering::SeqCst);
     }
 
+    fn reset_alloc_count(&self) {
+      self.alloc_count.store(0, std::sync::atomic::Ordering::SeqCst);
+    }
+
     fn alloc_count(&self) -> usize {
       self.alloc_count.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    fn count_allocations(&self) -> AllocCounterGuard<'_> {
+      self.enable_count_alloc();
+      AllocCounterGuard {
+        alloc_detector: self
+      }
+    }
+  }
+
+  struct AllocCounterGuard<'a> {
+    alloc_detector: &'a AllocDetector,
+  }
+
+  impl Drop for AllocCounterGuard<'_> {
+    fn drop(&mut self) {
+      self.alloc_detector.disable_count_alloc();
     }
   }
 
@@ -579,26 +605,48 @@ pub mod tests {
 
   #[test]
   fn test_no_alloc_during_unwind() {
-    // This test cannot run parallelly because it requires the global allocator to
-    // record the allocation count.
-
-    trigger_lazy();
-    PROFILER.write().as_mut().unwrap().start().unwrap();
-    let timer = Timer::new(999);
-    let start = std::time::Instant::now();
-    ALLOC.enable_count_alloc();
-
-    // alloc something to make sure the ALLOC works fine.
-    let _alloc = Box::new(1usize);
-    // busy loop for a while to trigger some samples
-    while start.elapsed().as_millis() < 500 {
-      std::hint::black_box(());
+    if std::env::var_os(NO_ALLOC_PROBE_CHILD_ENV).is_some() {
+      run_no_alloc_during_unwind_probe();
+      return;
     }
-    ALLOC.disable_count_alloc();
 
+    let test_binary = std::env::current_exe().unwrap();
+    let status = std::process::Command::new(test_binary)
+      .arg("--exact")
+      .arg("profiler::tests::test_no_alloc_during_unwind")
+      .arg("--nocapture")
+      .env(NO_ALLOC_PROBE_CHILD_ENV, "1")
+      .status()
+      .unwrap();
+
+    assert!(status.success());
+  }
+
+  fn run_no_alloc_during_unwind_probe() {
+    trigger_lazy();
+
+    ALLOC.reset_alloc_count();
+    let _ignored_alloc = Box::new(1usize);
+    assert_eq!(ALLOC.alloc_count(), 0);
+
+    ALLOC.reset_alloc_count();
+    {
+      let _alloc_counter_guard = ALLOC.count_allocations();
+      let _counted_alloc = Box::new(1usize);
+    }
     assert_eq!(ALLOC.alloc_count(), 1);
+    ALLOC.reset_alloc_count();
 
-    drop(timer);
-    PROFILER.write().as_mut().unwrap().stop().unwrap();
+    let _guard = ProfilerGuard::new(999).unwrap();
+    let start = std::time::Instant::now();
+    {
+      let _alloc_counter_guard = ALLOC.count_allocations();
+      let _alloc = Box::new(1usize);
+      // busy loop for a while to trigger some samples
+      while start.elapsed().as_millis() < 500 {
+        std::hint::black_box(());
+      }
+    }
+    assert_eq!(ALLOC.alloc_count(), 1);
   }
 }

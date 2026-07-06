@@ -26,13 +26,11 @@ use crate::backtrace::TraceImpl;
 fn resolve_in_perfmap(ip: usize) -> Option<Symbol> {
   use crate::perfmap::get_resolver;
 
-  if let Some(perf_map_resolver) = get_resolver().as_ref() {
-    if let Some(symbol) = perf_map_resolver.find(ip as _) {
-      return Some(Symbol::from(symbol));
-    }
-  }
-
-  None
+  get_resolver()
+    .as_ref()
+    .as_ref()
+    .and_then(|perf_map_resolver| perf_map_resolver.find(ip))
+    .map(Symbol::from)
 }
 
 #[cfg(not(feature = "perfmaps"))]
@@ -211,7 +209,7 @@ impl From<UnresolvedFrames> for Frames {
     while let Some(frame) = frame_iter.next() {
       let mut symbols: Vec<Symbol> = Vec::new();
 
-      if let Some(perfmap_symbol) = resolve_in_perfmap(frame.ip() as usize) {
+      if let Some(perfmap_symbol) = resolve_in_perfmap(Frame::ip(frame)) {
         symbols.push(perfmap_symbol);
       } else {
         frame.resolve_symbol(|symbol| {

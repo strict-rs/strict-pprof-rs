@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::BufRead;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
@@ -60,9 +61,10 @@ impl From<PerfMapSymbol> for Symbol {
   }
 }
 
-fn touch(path: &PathBuf) -> Result<(), Error> {
+fn ensure_perf_map_file(path: &Path) -> Result<(), Error> {
   std::fs::OpenOptions::new()
     .create(true)
+    .truncate(false)
     .write(true)
     .open(path)
     .map_err(|_| Error::CreatingError)?;
@@ -88,7 +90,7 @@ fn init_resolver() -> Option<PerfMap> {
 pub fn get_resolver() -> Arc<Option<PerfMap>> {
   static RESOLVER: Lazy<ArcSwap<Option<PerfMap>>> = Lazy::new(|| {
     // this makes sure the file exists
-    touch(&PathBuf::from("/tmp/").join(format!("perf-{}.map", std::process::id()))).ok();
+    ensure_perf_map_file(&PathBuf::from("/tmp/").join(format!("perf-{}.map", std::process::id()))).ok();
     ArcSwap::from(Arc::new(init_resolver()))
   });
 
@@ -103,4 +105,32 @@ pub fn get_resolver() -> Arc<Option<PerfMap>> {
   });
 
   RESOLVER.load().clone()
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn ensure_perf_map_file_creates_missing_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("perf-test.map");
+
+    ensure_perf_map_file(&path).unwrap();
+
+    assert!(path.is_file());
+    assert_eq!(std::fs::read_to_string(path).unwrap(), "");
+  }
+
+  #[test]
+  fn ensure_perf_map_file_preserves_existing_symbols() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("perf-test.map");
+    let symbols = "7f000000 2a sampled function with spaces\n";
+    std::fs::write(&path, symbols).unwrap();
+
+    ensure_perf_map_file(&path).unwrap();
+
+    assert_eq!(std::fs::read_to_string(path).unwrap(), symbols);
+  }
 }
