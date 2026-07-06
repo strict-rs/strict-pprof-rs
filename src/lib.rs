@@ -16,15 +16,19 @@
 //!
 //! ```rust
 //! # let guard = pprof::ProfilerGuard::new(100).unwrap();
-//!if let Ok(report) = guard.report().build() {
-//!    println!("report: {:?}", &report);
-//!};
+//! if let Ok(report) = guard.report().build() {
+//!   println!("report: {:?}", &report);
+//! };
 //! ```
 //!
 //! More configuration can be passed through `ProfilerGuardBuilder`:
 //!
 //! ```rust
-//! let guard = pprof::ProfilerGuardBuilder::default().frequency(1000).blocklist(&["libc", "libgcc", "pthread", "vdso"]).build().unwrap();
+//! let guard = pprof::ProfilerGuardBuilder::default()
+//!   .frequency(1000)
+//!   .blocklist(&["libc", "libgcc", "pthread", "vdso"])
+//!   .build()
+//!   .unwrap();
 //! ```
 //!
 //! The frequency means the sampler frequency, and the `blocklist` means the
@@ -64,34 +68,37 @@ mod profiler;
 mod report;
 mod timer;
 
-pub use self::addr_validate::validate;
-pub use self::collector::{Collector, HashCounter};
-pub use self::error::{Error, Result};
-pub use self::frames::{Frames, Symbol};
-pub use self::profiler::{ProfilerGuard, ProfilerGuardBuilder};
-pub use self::report::{Report, ReportBuilder, UnresolvedReport};
-
 #[cfg(feature = "flamegraph")]
 pub use inferno::flamegraph;
+
+pub use self::addr_validate::validate;
+pub use self::collector::Collector;
+pub use self::collector::HashCounter;
+pub use self::error::Error;
+pub use self::error::Result;
+pub use self::frames::Frames;
+pub use self::frames::Symbol;
+pub use self::profiler::ProfilerGuard;
+pub use self::profiler::ProfilerGuardBuilder;
+pub use self::report::Report;
+pub use self::report::ReportBuilder;
+pub use self::report::UnresolvedReport;
 
 #[allow(clippy::all)]
 #[cfg(all(feature = "prost-codec", not(feature = "protobuf-codec")))]
 pub mod protos {
-    pub use prost::Message;
+  pub use prost::Message;
 
-    include!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/proto/perftools.profiles.rs"
-    ));
+  include!(concat!(env!("CARGO_MANIFEST_DIR"), "/proto/perftools.profiles.rs"));
 }
 
 #[cfg(feature = "protobuf-codec")]
 pub mod protos {
-    pub use protobuf::Message;
+  pub use protobuf::Message;
 
-    include!(concat!(env!("OUT_DIR"), "/mod.rs"));
+  include!(concat!(env!("OUT_DIR"), "/mod.rs"));
 
-    pub use self::profile::*;
+  pub use self::profile::*;
 }
 
 #[cfg(feature = "criterion")]
