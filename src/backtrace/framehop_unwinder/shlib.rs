@@ -43,8 +43,8 @@ where
 
   fn section_data(&mut self, name: &[u8]) -> Option<D> {
     if let Some(section) = self.0.section_by_name_bytes(name) {
-      let data = section.data().ok()?;
-      Some(D::from(data))
+      let section_bytes = section.data().ok()?;
+      Some(D::from(section_bytes))
     } else {
       None
     }
@@ -74,4 +74,34 @@ fn find_objects() -> Vec<Module<Vec<u8>>> {
   });
 
   objects
+}
+
+#[cfg(test)]
+mod tests {
+  use strict_test_support::TestFailure;
+  use strict_test_support::ensure;
+  use strict_test_support::ensure_ok;
+
+  use super::*;
+
+  #[test]
+  fn open_mmap_ignores_missing_paths() -> std::result::Result<(), TestFailure> {
+    let dir = ensure_ok(tempfile::tempdir(), "tempdir should be created")?;
+    let missing_path = dir.path().join("missing-object");
+
+    ensure(
+      open_mmap(&missing_path).is_none(),
+      "missing shared-library paths should not create memory maps",
+    )
+  }
+
+  #[test]
+  fn open_mmap_ignores_directory_paths() -> std::result::Result<(), TestFailure> {
+    let dir = ensure_ok(tempfile::tempdir(), "tempdir should be created")?;
+
+    ensure(
+      open_mmap(dir.path()).is_none(),
+      "directory shared-library paths should not create memory maps",
+    )
+  }
 }

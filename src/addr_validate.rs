@@ -138,50 +138,125 @@ pub fn validate(addr: *const libc::c_void) -> bool {
 
 #[cfg(test)]
 mod test {
-  use std::sync::Mutex;
+  use parking_lot::Mutex;
+  use strict_test_support::TestFailure;
+  use strict_test_support::ensure;
+  use strict_test_support::ensure_eq;
+  use strict_test_support::ensure_ok;
 
   use super::*;
 
   static VALIDATE_LOCK: Mutex<()> = Mutex::new(());
 
   #[test]
-  fn validate_stack() {
-    let _guard = VALIDATE_LOCK.lock().unwrap();
-    let i = 0;
+  fn raw_fd_helpers_reject_negative_descriptors() -> std::result::Result<(), TestFailure> {
+    let mut read_buf = [0_u8; 1];
+    let write_buf = [1_u8; 1];
 
-    assert!(validate(&i as *const _ as *const libc::c_void));
+    ensure(
+      read_raw_fd(-1, &mut read_buf).err() == Some(Errno::EBADF),
+      "negative read file descriptors should be rejected before borrowing",
+    )?;
+    ensure(
+      write_raw_fd(-1, &write_buf).err() == Some(Errno::EBADF),
+      "negative write file descriptors should be rejected before borrowing",
+    )
   }
 
   #[test]
-  fn validate_heap() {
-    let _guard = VALIDATE_LOCK.lock().unwrap();
+  fn open_pipe_installs_connected_read_write_descriptors() -> std::result::Result<(), TestFailure> {
+    let _guard = VALIDATE_LOCK.lock();
+    ensure_ok(open_pipe(), "validation pipe should open")?;
+    let read_fd = MEM_VALIDATE_PIPE.read_fd.load(Ordering::SeqCst);
+    let write_fd = MEM_VALIDATE_PIPE.write_fd.load(Ordering::SeqCst);
+    let mut received = [0_u8; 1];
+
+    ensure(read_fd >= 0, "opened validation pipe should store a read descriptor")?;
+    ensure(write_fd >= 0, "opened validation pipe should store a write descriptor")?;
+    ensure_eq(
+      &ensure_ok(write_raw_fd(write_fd, &[42]), "validation pipe should accept a byte")?,
+      &1,
+      "validation pipe write should report one byte",
+    )?;
+    ensure_eq(
+      &ensure_ok(read_raw_fd(read_fd, &mut received), "validation pipe should return a byte")?,
+      &1,
+      "validation pipe read should report one byte",
+    )?;
+    ensure(
+      received == [42],
+      "validation pipe read descriptor should receive bytes written to its paired write descriptor",
+    )
+  }
+
+  #[test]
+  fn validate_writes_probe_bytes_for_readable_address() -> std::result::Result<(), TestFailure> {
+    let _guard = VALIDATE_LOCK.lock();
+    let readable = 0usize;
+    let mut probe_bytes = [0_u8; 64];
+
+    ensure_ok(open_pipe(), "validation pipe should open")?;
+    ensure(
+      validate(&readable as *const _ as *const libc::c_void),
+      "readable stack address should validate",
+    )?;
+
+    let read_fd = MEM_VALIDATE_PIPE.read_fd.load(Ordering::SeqCst);
+    let bytes = ensure_ok(
+      read_raw_fd(read_fd, &mut probe_bytes),
+      "successful validation should leave probe bytes readable from the pipe",
+    )?;
+    ensure(bytes > 0, "successful validation should write at least one probe byte to the pipe")
+  }
+
+  #[test]
+  fn validate_stack() -> std::result::Result<(), TestFailure> {
+    let _guard = VALIDATE_LOCK.lock();
+    let i = 0;
+
+    ensure(validate(&i as *const _ as *const libc::c_void), "stack address should validate")
+  }
+
+  #[test]
+  fn validate_heap() -> std::result::Result<(), TestFailure> {
+    let _guard = VALIDATE_LOCK.lock();
     let vec = vec![0; 1000];
 
     for i in vec.iter() {
-      assert!(validate(i as *const _ as *const libc::c_void));
+      ensure(validate(i as *const _ as *const libc::c_void), "heap address should validate")?;
     }
+    Ok(())
   }
 
   #[test]
-  fn failed_validate() {
-    let _guard = VALIDATE_LOCK.lock().unwrap();
-    assert!(!validate(std::ptr::null::<libc::c_void>()));
-    assert!(!validate(-1_i32 as usize as *const libc::c_void))
+  fn failed_validate() -> std::result::Result<(), TestFailure> {
+    let _guard = VALIDATE_LOCK.lock();
+    ensure(!validate(std::ptr::null::<libc::c_void>()), "null pointer should not validate")?;
+    ensure(
+      !validate(-1_i32 as usize as *const libc::c_void),
+      "invalid address should not validate",
+    )
   }
 
   #[test]
-  fn validate_recovers_after_pipe_descriptors_are_closed() {
-    let _guard = VALIDATE_LOCK.lock().unwrap();
+  fn validate_recovers_after_pipe_descriptors_are_closed() -> std::result::Result<(), TestFailure> {
+    let _guard = VALIDATE_LOCK.lock();
     let i = 0;
 
-    open_pipe().unwrap();
+    ensure_ok(open_pipe(), "pipe should open before forced close")?;
     let read_fd = MEM_VALIDATE_PIPE.read_fd.load(Ordering::SeqCst);
     let write_fd = MEM_VALIDATE_PIPE.write_fd.load(Ordering::SeqCst);
     close_raw_fd(read_fd);
     close_raw_fd(write_fd);
 
-    assert!(validate(&i as *const _ as *const libc::c_void));
-    assert!(MEM_VALIDATE_PIPE.read_fd.load(Ordering::SeqCst) >= 0);
-    assert!(MEM_VALIDATE_PIPE.write_fd.load(Ordering::SeqCst) >= 0);
+    ensure(validate(&i as *const _ as *const libc::c_void), "validation should reopen the pipe")?;
+    ensure(
+      MEM_VALIDATE_PIPE.read_fd.load(Ordering::SeqCst) >= 0,
+      "read file descriptor should be reopened",
+    )?;
+    ensure(
+      MEM_VALIDATE_PIPE.write_fd.load(Ordering::SeqCst) >= 0,
+      "write file descriptor should be reopened",
+    )
   }
 }

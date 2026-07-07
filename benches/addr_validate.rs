@@ -10,8 +10,8 @@ fn bench_validate_addr(c: &mut Criterion) {
     let stack_addrs = [0; 100];
 
     b.iter(|| {
-      stack_addrs.iter().for_each(|item| {
-        validate(item as *const _ as *const libc::c_void);
+      stack_addrs.iter().for_each(|stack_addr| {
+        validate(stack_addr as *const _ as *const libc::c_void);
       })
     })
   });
@@ -20,8 +20,8 @@ fn bench_validate_addr(c: &mut Criterion) {
     let heap_addrs = vec![0; 100];
 
     b.iter(|| {
-      heap_addrs.iter().for_each(|item| {
-        validate(item as *const _ as *const libc::c_void);
+      heap_addrs.iter().for_each(|heap_addr| {
+        validate(heap_addr as *const _ as *const libc::c_void);
       })
     })
   });

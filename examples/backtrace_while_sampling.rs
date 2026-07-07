@@ -1,6 +1,9 @@
 // Copyright 2021 TiKV Project Authors. Licensed under Apache-2.0.
 
-use std::fs::File;
+#[path = "common/prime.rs"]
+pub mod prime;
+#[path = "common/profile_proto.rs"]
+pub mod profile_proto;
 
 fn deep_recursive(depth: i32) {
   if depth > 0 {
@@ -10,21 +13,20 @@ fn deep_recursive(depth: i32) {
   }
 }
 
-fn main() {
+fn main() -> profile_proto::ExampleResult<()> {
   let guard = pprof::ProfilerGuardBuilder::default()
     .frequency(1000)
     .blocklist(&["libc", "libgcc", "pthread"])
-    .build()
-    .unwrap();
+    .build()?;
 
   for _ in 0..10000 {
     deep_recursive(20);
   }
 
   if let Ok(report) = guard.report().build() {
-    let file = File::create("flamegraph.svg").unwrap();
-    report.flamegraph(file).unwrap();
-
-    println!("report: {:?}", &report);
+    profile_proto::write_flamegraph(&report)?;
+    profile_proto::log_report(&report);
   };
+
+  Ok(())
 }

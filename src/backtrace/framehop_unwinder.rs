@@ -9,21 +9,20 @@ use once_cell::sync::Lazy;
 use spin::RwLock;
 mod shlib;
 
-#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
-fn get_regs_from_context(ucontext: *mut c_void) -> Option<(UnwindRegsNative, u64)> {
+#[cfg(target_os = "macos")]
+fn macos_mcontext(ucontext: *mut c_void) -> Option<libc::mcontext_t> {
   let ucontext: *mut ucontext_t = ucontext as *mut ucontext_t;
   if ucontext.is_null() {
     return None;
   }
 
-  let thread_state = unsafe {
-    let mcontext = (*ucontext).uc_mcontext;
-    if mcontext.is_null() {
-      return None;
-    } else {
-      (*mcontext).__ss
-    }
-  };
+  let mcontext = unsafe { (*ucontext).uc_mcontext };
+  if mcontext.is_null() { None } else { Some(mcontext) }
+}
+
+#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+fn get_regs_from_context(ucontext: *mut c_void) -> Option<(UnwindRegsNative, u64)> {
+  let thread_state = unsafe { (*macos_mcontext(ucontext)?).__ss };
 
   Some((
     UnwindRegsNative::new(thread_state.__lr, thread_state.__sp, thread_state.__fp),
@@ -33,19 +32,7 @@ fn get_regs_from_context(ucontext: *mut c_void) -> Option<(UnwindRegsNative, u64
 
 #[cfg(all(target_arch = "x86_64", target_os = "macos"))]
 fn get_regs_from_context(ucontext: *mut c_void) -> Option<(UnwindRegsNative, u64)> {
-  let ucontext: *mut ucontext_t = ucontext as *mut ucontext_t;
-  if ucontext.is_null() {
-    return None;
-  }
-
-  let thread_state = unsafe {
-    let mcontext = (*ucontext).uc_mcontext;
-    if mcontext.is_null() {
-      return None;
-    } else {
-      (*mcontext).__ss
-    }
-  };
+  let thread_state = unsafe { (*macos_mcontext(ucontext)?).__ss };
 
   Some((
     UnwindRegsNative::new(thread_state.__rip, thread_state.__rsp, thread_state.__rbp),
@@ -129,34 +116,7 @@ fn read_stack(addr: u64) -> Result<u64, ()> {
 }
 
 static UNWINDER: Lazy<RwLock<FramehopUnwinder>> = Lazy::new(|| RwLock::new(FramehopUnwinder::new()));
-#[derive(Clone, Debug)]
-pub struct Frame {
-  pub ip: usize,
-}
-
-unsafe extern "C" {
-  fn _Unwind_FindEnclosingFunction(pc: *mut c_void) -> *mut c_void;
-
-}
-
-impl super::Frame for Frame {
-  type S = backtrace::Symbol;
-  fn ip(&self) -> usize {
-    self.ip
-  }
-
-  fn symbol_address(&self) -> *mut c_void {
-    if cfg!(target_os = "macos") || cfg!(target_os = "ios") {
-      self.ip as *mut c_void
-    } else {
-      unsafe { _Unwind_FindEnclosingFunction(self.ip as *mut c_void) }
-    }
-  }
-
-  fn resolve_symbol<F: FnMut(&Self::S)>(&self, cb: F) {
-    backtrace::resolve(self.ip as *mut c_void, cb);
-  }
-}
+type Frame = super::BacktraceFrame;
 
 pub struct Trace;
 
@@ -179,5 +139,58 @@ impl super::Trace for Trace {
     };
 
     unwinder.iter_frames(ctx, cb);
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use strict_test_support::TestFailure;
+  use strict_test_support::ensure;
+
+  use super::*;
+
+  #[cfg(any(
+    all(target_arch = "aarch64", target_os = "linux"),
+    all(target_arch = "x86_64", target_os = "linux"),
+    all(target_arch = "aarch64", target_os = "macos"),
+    all(target_arch = "x86_64", target_os = "macos")
+  ))]
+  #[test]
+  fn null_signal_context_has_no_registers() -> std::result::Result<(), TestFailure> {
+    ensure(
+      get_regs_from_context(std::ptr::null_mut()).is_none(),
+      "null signal context should not produce unwind registers",
+    )
+  }
+
+  #[test]
+  fn read_stack_rejects_unreadable_null_address() -> std::result::Result<(), TestFailure> {
+    ensure(read_stack(0).is_err(), "null stack addresses should not be read")
+  }
+
+  #[test]
+  fn iter_frames_returns_without_context_registers() -> std::result::Result<(), TestFailure> {
+    let mut unwinder = FramehopUnwinder::new();
+    let mut frame_seen = false;
+
+    unwinder.iter_frames(std::ptr::null_mut(), |_| {
+      frame_seen = true;
+      true
+    });
+
+    ensure(!frame_seen, "missing context registers should not invoke frame callbacks")
+  }
+
+  #[test]
+  fn trace_returns_when_unwinder_lock_is_busy() -> std::result::Result<(), TestFailure> {
+    let _guard = UNWINDER.write();
+    let mut frame_seen = false;
+
+    <Trace as super::super::Trace>::trace(std::ptr::null_mut(), |_| {
+      frame_seen = true;
+      true
+    });
+
+    ensure(!frame_seen, "busy unwinder lock should skip tracing without invoking callbacks")
   }
 }

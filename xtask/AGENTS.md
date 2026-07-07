@@ -12,6 +12,15 @@ This file is the agent and maintainer guide for the **`xtask`** crate; `README.m
 
 Prefer small, explicit workflows over clever general runners. A new subcommand should make it obvious what external tools it calls, what files it reads or writes, and what failure means.
 
+## `xtask` role in `strict-pprof-rs`
+
+`xtask` is the local automation composition crate for the `pprof` product repository. It wires shared `strict-xtask-*` command providers into the repo's `just` surface and should stay thin.
+
+- Keep reusable workflow behavior in the owning shared `strict-xtask-*` crate, not in this repository's `xtask`.
+- Keep repo-specific automation behind `just x <name>` through the extension registry when the product genuinely needs local behavior.
+- Preserve the current `[lints] workspace = true` opt-in for `xtask`; do not use `xtask` lint compliance as permission to opt the main `pprof` crate into workspace lints in the same wave.
+- Use `just`, not direct `cargo xtask`, when running workflows from this repository.
+
 ## Shared-source boundary
 
 `xtask/` composes reusable command crates and project-owned extensions; it is not the place to fork shared workflow behavior. Product repositories should not edit built-in workflow files, template-owned `justfile` recipes, or reusable `strict-xtask-*` crates for repo-specific automation.
@@ -29,13 +38,6 @@ For a new shared Rust/Cargo workflow, update the owning shared crate first, then
 
 Use `strict-xtask-cargo` for Rust/Cargo workflows, `repo-overview`, agent helper reports, and command behavior tests. Use `strict-xtask-agents-md` for generated Markdown engine behavior. Use `strict-xtask-core` for runner, parser, color, command-observation, or extension-router behavior. Do not move reusable behavior into local `xtask` just because a consuming repo needs it.
 
-`xtask` exists to support the `strict-test-support` product; it is not the product itself. Keep local changes to composition, explicit binary entrypoints, the project extension registry, and repo-specific extension commands.
-
-- For shared Rust/Cargo workflows, change `strict-xtask-cargo` first, then update this repository's dependency and expose the workflow through local composition only after the owning crate provides it.
-- For guidance generation, change `strict-xtask-agents-md`; for runner, parser, color, process, output, context, or extension-router behavior, change `strict-xtask-core`.
-- For repo-specific maintenance commands, use the `just x <name>` extension seam. Keep the root `justfile` as a thin dispatcher and avoid one-off shell logic.
-- Do not add public testing vocabulary, fixtures, or assertion helpers to `xtask`. Shared test APIs belong in `crates/strict-test-support`; project-only test helpers belong beside the consuming tests.
-
 ## Extension mechanism
 
 > **Audience: project extensions.** Maintainers changing `strict-xtask-core::extension` should work from the shared crate's module docs and tests.
@@ -49,13 +51,6 @@ The extension seam maps each project command's parsed arguments into a plain-dat
 
 The template registry may start empty. `just x` should still exist and report that no project extension commands are registered until a repository adds one.
 
-The `just x <name>` seam is for repo-specific maintenance commands that do not belong in shared workflow crates. The generic router lives in `strict-xtask-core`; this repo owns only the plain-data `extensions::ProjectCommand` enum, explicit dispatch, and the list of registered project commands.
-
-- Each extension module owns its `bpaf` parser, command entry point, and `execute(&CommandContext, Args)` handler.
-- `extensions.rs` maps parsed args into `ProjectCommand` variants, matches variants explicitly in `ProjectCommand::run`, and lists the registered command parsers.
-- The `--` passthrough is split by the shared runner before extension parsing; command-specific dashed flags still go after `--`, for example `just x release-notes -- --since v1.2`.
-- Keep extension handlers focused on repository maintenance. If a command starts defining reusable test behavior, move that behavior into `crates/strict-test-support` or a consumer-owned helper instead of hiding it behind `xtask`.
-
 ## Command execution
 
 Use `CommandContext::process()` / `ProcessRunner`, or the matching `Runtime` methods, instead of hand-built shell strings. Pass programs and arguments separately, and choose the appropriate `ToolColor` strategy (`CargoGlobal`, `CargoNextest`, `CargoLlvmCov`, captured-machine output, or no color) so forwarded tools respect the same color policy as `xtask`. Avoid `bash -c` unless the task is intrinsically shell behavior and there is no reasonable Rust or direct-process alternative.
@@ -63,12 +58,6 @@ Use `CommandContext::process()` / `ProcessRunner`, or the matching `Runtime` met
 Non-zero exits should normally become `XtaskError::CommandFailed`. Use tolerant execution only for expected optional probes, and emit a clear skip/status line when continuing after a failure.
 
 Keep workflows idempotent. Re-running `just init`, `just gen-lint-template`, `just gen-agent-guidance`, or similar maintenance commands should either produce the same files or a clear deterministic update. Validate output paths so generated files do not escape the workspace; mirror the existing `coverage --output` and generated-output parsing style for path guards.
-
-The path-scopable commands (`fmt` / `check` / `lint` / `test` / `test-doc` / `test-all` / `doc`) are delegated to `strict-xtask-cargo`. Use the real `just` recipes instead of reimplementing scoped Cargo invocation in local scripts or extension commands.
-
-- Workspace runs and scoped runs are resolved by the shared cargo workflow crate, including `cargo_metadata` package mapping and tool passthrough after `--`.
-- For product-only verification, a path scope such as `just test crates/strict-test-support` is appropriate when the change is confined to that crate. Broader root policy, feature, dependency, generated-output, or workflow changes need the corresponding broader gate.
-- If scoped behavior itself is wrong, fix the owning `strict-xtask-cargo` workflow rather than adding a local workaround in this repository's `xtask`.
 
 ## Errors and output
 
@@ -98,17 +87,9 @@ When a command shells out, prefer fake tools in integration fixtures instead of 
 
 Run `just fmt && just check && just test` before handing off. If the change touches docs examples, also run `just test-doc`; if it changes CI/precommit composition or core tooling behavior, prefer `just ci`, which includes the normal per-file coverage gate and the per-feature union coverage gate. When you have added or changed code but are not running the full CI mirror, also run `just coverage --per-file` and confirm every file you touched clears the floors.
 
-`xtask` tests in this repository should cover local composition and adapter behavior: the external command sets are exposed, the local extension router is wired, the pre-commit binary hands off correctly, and repo-specific extension commands behave as advertised.
-
-- Do not duplicate `strict-xtask-cargo`, `strict-xtask-core`, or `strict-xtask-agents-md` internals here. If a shared workflow needs new behavior, put the tests beside that shared implementation.
-- Use `strict_test_support` for panic-free assertions and fixtures. For real external programs that would inherit stdout or stderr, drive an ignored child test through `strict_test_support::capture_ignored_test`; use `capture_ignored_test_with` or `TestBinaryCommand` when the captured child needs cwd, env, stdin, or other `Command` setup.
-- Keep automation tests separate from `crates/strict-test-support` product tests. A workflow regression and a public test-helper regression should fail with different evidence.
-
 ## Visibility is the consumer contract (this is a template)
 
 Repos generated from this template call into `xtask`, so `pub` vs `pub(crate)` encodes the *intended consumer surface*, not what this repo happens to exercise. An item being unreferenced outside its module **here** is never grounds to make it `pub(crate)`, delete it, or drop a doc link to it — a consuming repo may be the caller. When a public `//!` / `///` doc links a `pub(crate)` item (`rustdoc::private_intra_doc_links`, deny — fires only during `cargo doc` / `just doc`), make the item genuinely `pub`, along with any type in its signature (else `private_interfaces` / E0446), rather than demoting the link to a code span; public value-returning fns then take `#[must_use]` (`must_use_candidate`, deny). Decide visibility by the intended consumer surface — expose the composable building blocks the module `//!` doc advertises, keep only true sub-helpers `pub(crate)` — and verify with `just doc && just lint`.
-
-In this repository, read the inherited visibility rule as a support-surface rule for `xtask`, not as product identity. Public `xtask` items are compatibility promises for workflow consumers; public `crates/strict-test-support` items are the product API and should drive product decisions.
 
 ## Boundaries
 

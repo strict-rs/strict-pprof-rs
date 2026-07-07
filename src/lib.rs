@@ -61,15 +61,14 @@ mod addr_validate;
 mod backtrace;
 mod collector;
 mod error;
+#[cfg(feature = "flamegraph")]
+pub mod flamegraph;
 mod frames;
 #[cfg(feature = "perfmaps")]
 mod perfmap;
 mod profiler;
 mod report;
 mod timer;
-
-#[cfg(feature = "flamegraph")]
-pub use inferno::flamegraph;
 
 pub use self::addr_validate::validate;
 pub use self::collector::Collector;
@@ -84,7 +83,6 @@ pub use self::report::Report;
 pub use self::report::ReportBuilder;
 pub use self::report::UnresolvedReport;
 
-#[allow(clippy::all)]
 #[cfg(all(feature = "prost-codec", not(feature = "protobuf-codec")))]
 pub mod protos {
   pub use prost::Message;
@@ -103,3 +101,31 @@ pub mod protos {
 
 #[cfg(feature = "criterion")]
 pub mod criterion;
+
+#[cfg(test)]
+mod tests {
+  use strict_test_support::TestFailure;
+  use strict_test_support::ensure_eq;
+
+  use super::*;
+
+  #[test]
+  fn max_thread_name_matches_fixed_profiler_buffer_contract() -> std::result::Result<(), TestFailure> {
+    ensure_eq(
+      &MAX_THREAD_NAME,
+      &16,
+      "thread-name buffer width should match the profiler's fixed native-name contract",
+    )
+  }
+
+  #[test]
+  fn max_depth_matches_enabled_feature_contract() -> std::result::Result<(), TestFailure> {
+    #[cfg(feature = "large-depth")]
+    ensure_eq(&MAX_DEPTH, &1024, "large-depth feature should select 1024 stack frames")?;
+    #[cfg(all(feature = "huge-depth", not(feature = "large-depth")))]
+    ensure_eq(&MAX_DEPTH, &512, "huge-depth feature should select 512 stack frames")?;
+    #[cfg(not(any(feature = "large-depth", feature = "huge-depth")))]
+    ensure_eq(&MAX_DEPTH, &128, "default stack depth should be 128 frames")?;
+    Ok(())
+  }
+}

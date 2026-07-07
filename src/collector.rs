@@ -71,16 +71,7 @@ impl<T: Eq> Bucket<T> {
       self.length += 1;
       None
     } else {
-      let mut min_index = 0;
-      let mut min_count = self.entries[0].count;
-      for index in 0..self.length {
-        let count = self.entries[index].count;
-        if count < min_count {
-          min_index = index;
-          min_count = count;
-        }
-      }
-
+      let min_index = self.min_count_entry_index();
       let mut new_entry = Entry {
         item: key,
         count,
@@ -88,6 +79,20 @@ impl<T: Eq> Bucket<T> {
       std::mem::swap(&mut self.entries[min_index], &mut new_entry);
       Some(new_entry)
     }
+  }
+
+  fn min_count_entry_index(&self) -> usize {
+    let mut min_index = 0;
+    let mut min_count = self.entries[0].count;
+    for index in 1..self.length {
+      let count = self.entries[index].count;
+      if count >= min_count {
+        continue;
+      }
+      min_index = index;
+      min_count = count;
+    }
+    min_index
   }
 
   pub fn iter(&self) -> BucketIterator<'_, T> {
@@ -296,85 +301,228 @@ mod test_utils {
 mod tests {
   use std::collections::BTreeMap;
 
+  use strict_test_support::TestFailure;
+  use strict_test_support::ensure;
+  use strict_test_support::ensure_eq;
+  use strict_test_support::ensure_ok;
+
   use super::*;
 
+  const SAMPLE_GROUPS: usize = (1 << 12) * 4;
+
+  fn bucket_entries(bucket: &Bucket<usize>) -> Vec<(usize, isize)> {
+    bucket.iter().map(|entry| (entry.item, entry.count)).collect::<Vec<_>>()
+  }
+
+  fn sample_count(sample_index: usize) -> isize {
+    (sample_index % 4) as isize
+  }
+
+  fn record_eviction<T: std::cmp::Ord + Copy>(real_map: &mut BTreeMap<T, isize>, evicted_entry: Option<Entry<T>>) {
+    if let Some(evicted_entry) = evicted_entry {
+      test_utils::add_map(real_map, &evicted_entry);
+    }
+  }
+
+  fn ensure_reconstructed_counts<T, F>(
+    real_map: &BTreeMap<T, isize>,
+    sample_groups: usize,
+    make_key: F,
+  ) -> std::result::Result<(), TestFailure>
+  where
+    T: Ord,
+    F: Fn(usize) -> T,
+  {
+    for sample_index in 0..sample_groups {
+      let expected_count = sample_count(sample_index);
+      let actual_count = real_map.get(&make_key(sample_index)).copied().unwrap_or_default();
+      ensure_eq(
+        &actual_count,
+        &expected_count,
+        "reconstructed count should match expected sample count",
+      )?;
+    }
+    Ok(())
+  }
+
   #[test]
-  fn stack_hash_counter() {
+  fn bucket_updates_existing_key_without_eviction_or_length_growth() -> std::result::Result<(), TestFailure> {
+    let mut bucket = Bucket::<usize>::default();
+
+    ensure(bucket.add(7, 2).is_none(), "first bucket insertion should not evict an entry")?;
+    ensure(
+      bucket.add(7, 3).is_none(),
+      "updating an existing bucket key should not evict an entry",
+    )?;
+
+    ensure_eq(&bucket.length, &1, "updating an existing key should not grow bucket length")?;
+    ensure(
+      bucket_entries(&bucket) == vec![(7, 5)],
+      "existing bucket key should accumulate counts in place",
+    )
+  }
+
+  #[test]
+  fn bucket_eviction_spills_lowest_count_entry_and_keeps_new_entry() -> std::result::Result<(), TestFailure> {
+    let mut bucket = Bucket::<usize>::default();
+
+    for (key, count) in [(10, 5), (20, 3), (30, 4), (40, 6)] {
+      ensure(
+        bucket.add(key, count).is_none(),
+        "filling bucket below associativity should not evict",
+      )?;
+    }
+
+    let evicted = bucket.add(50, 7);
+    match evicted {
+      Some(entry) => {
+        ensure_eq(&entry.item, &20, "bucket should evict the lowest-count entry")?;
+        ensure_eq(&entry.count, &3, "evicted entry should preserve its accumulated count")?;
+      }
+      None => {
+        return ensure(false, "full bucket insertion should evict one entry");
+      }
+    }
+
+    let entries = bucket_entries(&bucket);
+    ensure_eq(&bucket.length, &BUCKETS_ASSOCIATIVITY, "full bucket should remain full")?;
+    ensure(
+      entries.iter().any(|(key, count)| (*key, *count) == (50, 7)),
+      "full bucket should retain the newly inserted entry",
+    )?;
+    ensure(
+      !entries.iter().any(|(key, _count)| *key == 20),
+      "evicted key should not remain in the bucket",
+    )
+  }
+
+  #[test]
+  fn bucket_iterator_yields_only_live_entries() -> std::result::Result<(), TestFailure> {
+    let mut bucket = Bucket::<usize>::default();
+
+    ensure(
+      bucket_entries(&bucket).is_empty(),
+      "empty bucket iterator should not expose default backing slots",
+    )?;
+    ensure(bucket.add(11, 1).is_none(), "single bucket insertion should not evict an entry")?;
+
+    ensure(
+      bucket_entries(&bucket) == vec![(11, 1)],
+      "bucket iterator should expose only inserted entries",
+    )
+  }
+
+  #[test]
+  fn temp_fd_array_iterates_buffered_entries_without_flush() -> std::result::Result<(), TestFailure> {
+    let mut entries = ensure_ok(TempFdArray::<usize>::new(), "temp fd array should be created")?;
+
+    ensure_ok(entries.push(7), "first buffered entry should be pushed")?;
+    ensure_ok(entries.push(11), "second buffered entry should be pushed")?;
+
+    let collected = ensure_ok(entries.try_iter(), "buffered entries should iterate")?
+      .copied()
+      .collect::<Vec<_>>();
+    ensure(
+      collected == vec![7, 11],
+      "unflushed temp fd array should expose buffered entries in insertion order",
+    )
+  }
+
+  #[test]
+  fn temp_fd_array_iterates_current_buffer_and_flushed_entries() -> std::result::Result<(), TestFailure> {
+    ensure(BUFFER_LENGTH > 0, "collector buffer length should be nonzero")?;
+    let total_entries = BUFFER_LENGTH.saturating_add(2);
+    let mut entries = ensure_ok(TempFdArray::<usize>::new(), "temp fd array should be created")?;
+
+    for entry in 0..total_entries {
+      ensure_ok(entries.push(entry), "temp fd array entry should be pushed")?;
+    }
+
+    let collected = ensure_ok(entries.try_iter(), "spilled entries should iterate")?
+      .copied()
+      .collect::<Vec<_>>();
+    ensure_eq(
+      &collected.len(),
+      &total_entries,
+      "temp fd array iterator should include buffered and flushed entries",
+    )?;
+    ensure(
+      collected.first().copied() == Some(BUFFER_LENGTH),
+      "iterator should expose the current in-memory buffer before flushed storage",
+    )?;
+    ensure(
+      collected.get(1).copied() == Some(BUFFER_LENGTH.saturating_add(1)),
+      "iterator should include all current buffered entries",
+    )?;
+    ensure(
+      collected.contains(&0),
+      "iterator should include entries previously flushed to the backing file",
+    )?;
+    ensure(
+      collected.contains(&BUFFER_LENGTH.saturating_sub(1)),
+      "iterator should include the last entry from the flushed buffer",
+    )
+  }
+
+  #[test]
+  fn stack_hash_counter() -> std::result::Result<(), TestFailure> {
     let mut stack_hash_counter = HashCounter::<usize>::default();
     stack_hash_counter.add(0, 1);
     stack_hash_counter.add(1, 1);
     stack_hash_counter.add(1, 1);
 
-    stack_hash_counter.iter().for_each(|item| {
-      if item.item == 0 {
-        assert_eq!(item.count, 1);
-      } else if item.item == 1 {
-        assert_eq!(item.count, 2);
-      } else {
-        unreachable!();
-      }
-    });
+    let mut real_map = BTreeMap::new();
+    for entry in stack_hash_counter.iter() {
+      test_utils::add_map(&mut real_map, entry);
+    }
+
+    ensure_eq(
+      &real_map.get(&0).copied().unwrap_or_default(),
+      &1,
+      "first key should have one sample",
+    )?;
+    ensure_eq(
+      &real_map.get(&1).copied().unwrap_or_default(),
+      &2,
+      "second key should merge two samples",
+    )?;
+    ensure_eq(&real_map.len(), &2, "hash counter should contain only inserted keys")
   }
 
   #[test]
-  fn evict_test() {
+  fn evict_test() -> std::result::Result<(), TestFailure> {
     let mut stack_hash_counter = HashCounter::<usize>::default();
     let mut real_map = BTreeMap::new();
 
-    for item in 0..(1 << 10) * 4 {
-      for _ in 0..(item % 4) {
-        match stack_hash_counter.add(item, 1) {
-          None => {}
-          Some(evict) => {
-            test_utils::add_map(&mut real_map, &evict);
-          }
-        }
+    for sample_index in 0..(1 << 10) * 4 {
+      for _ in 0..(sample_index % 4) {
+        record_eviction(&mut real_map, stack_hash_counter.add(sample_index, 1));
       }
     }
 
-    stack_hash_counter.iter().for_each(|entry| {
+    for entry in stack_hash_counter.iter() {
       test_utils::add_map(&mut real_map, entry);
-    });
-
-    for item in 0..(1 << 10) * 4 {
-      let count = (item % 4) as isize;
-      match real_map.get(&item) {
-        Some(item) => {
-          assert_eq!(*item, count);
-        }
-        None => {
-          assert_eq!(count, 0);
-        }
-      }
     }
+
+    ensure_reconstructed_counts(&real_map, (1 << 10) * 4, |sample_index| sample_index)
   }
 
   #[test]
-  fn collector_test() {
-    let mut collector = Collector::new().unwrap();
+  fn collector_test() -> std::result::Result<(), TestFailure> {
+    let mut collector = ensure_ok(Collector::new(), "collector should be created")?;
     let mut real_map = BTreeMap::new();
 
-    for item in 0..(1 << 12) * 4 {
-      for _ in 0..(item % 4) {
-        collector.add(item, 1).unwrap();
+    for sample_index in 0..SAMPLE_GROUPS {
+      for _ in 0..(sample_index % 4) {
+        ensure_ok(collector.add(sample_index, 1), "sample should be added")?;
       }
     }
 
-    collector.try_iter().unwrap().for_each(|entry| {
+    for entry in ensure_ok(collector.try_iter(), "collector entries should iterate")? {
       test_utils::add_map(&mut real_map, entry);
-    });
-
-    for item in 0..(1 << 12) * 4 {
-      let count = (item % 4) as isize;
-      match real_map.get(&item) {
-        Some(value) => {
-          assert_eq!(count, *value);
-        }
-        None => {
-          assert_eq!(count, 0);
-        }
-      }
     }
+
+    ensure_reconstructed_counts(&real_map, SAMPLE_GROUPS, |sample_index| sample_index)
   }
 
   #[derive(Debug, Hash, Eq, PartialEq, PartialOrd, Ord, Default, Clone, Copy)]
@@ -387,46 +535,29 @@ mod tests {
 
   // collector_align_test uses a bigger item to test the alignment of the collector
   #[test]
-  fn collector_align_test() {
-    let mut collector = Collector::new().unwrap();
+  fn collector_align_test() -> std::result::Result<(), TestFailure> {
+    let mut collector = ensure_ok(Collector::new(), "collector should be created")?;
     let mut real_map = BTreeMap::new();
 
-    for item in 0..(1 << 12) * 4 {
-      for _ in 0..(item % 4) {
-        collector
-          .add(
-            AlignTest {
-              a: item as u16,
-              b: item as u32,
-              c: item as u64,
-              d: item as u64,
-            },
-            1,
-          )
-          .unwrap();
+    for sample_index in 0..SAMPLE_GROUPS {
+      for _ in 0..(sample_index % 4) {
+        ensure_ok(collector.add(align_test(sample_index), 1), "aligned sample should be added")?;
       }
     }
 
-    collector.try_iter().unwrap().for_each(|entry| {
+    for entry in ensure_ok(collector.try_iter(), "collector entries should iterate")? {
       test_utils::add_map(&mut real_map, entry);
-    });
+    }
 
-    for item in 0..(1 << 12) * 4 {
-      let count = (item % 4) as isize;
-      let align_item = AlignTest {
-        a: item as u16,
-        b: item as u32,
-        c: item as u64,
-        d: item as u64,
-      };
-      match real_map.get(&align_item) {
-        Some(value) => {
-          assert_eq!(count, *value);
-        }
-        None => {
-          assert_eq!(count, 0);
-        }
-      }
+    ensure_reconstructed_counts(&real_map, SAMPLE_GROUPS, align_test)
+  }
+
+  fn align_test(sample_index: usize) -> AlignTest {
+    AlignTest {
+      a: sample_index as u16,
+      b: sample_index as u32,
+      c: sample_index as u64,
+      d: sample_index as u64,
     }
   }
 }

@@ -6,6 +6,8 @@ use std::time::Duration;
 use std::time::Instant;
 use std::time::SystemTime;
 
+use crate::frames::current_system_time;
+
 #[repr(C)]
 #[derive(Clone)]
 struct Timeval {
@@ -54,7 +56,7 @@ impl Timer {
 
     Timer {
       frequency,
-      start_time: SystemTime::now(),
+      start_time: current_system_time(),
       start_instant: Instant::now(),
     }
   }
@@ -107,5 +109,39 @@ impl Default for ReportTiming {
       start_time: SystemTime::UNIX_EPOCH,
       duration:   Default::default(),
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use strict_test_support::TestFailure;
+  use strict_test_support::ensure;
+  use strict_test_support::ensure_eq;
+
+  use super::*;
+
+  #[test]
+  fn report_timing_default_is_epoch_with_unit_frequency() -> std::result::Result<(), TestFailure> {
+    let timing = ReportTiming::default();
+
+    ensure_eq(&timing.frequency, &1, "default frequency should be one")?;
+    ensure(timing.start_time == SystemTime::UNIX_EPOCH, "default start time should be epoch")?;
+    ensure(timing.duration == Duration::default(), "default duration should be zero")
+  }
+
+  #[test]
+  fn timer_records_frequency_start_time_and_elapsed_duration() -> std::result::Result<(), TestFailure> {
+    let timer = Timer::new(1);
+    let timing = timer.timing();
+
+    ensure_eq(&timing.frequency, &1, "timer timing should preserve frequency")?;
+    ensure(
+      timing.start_time.duration_since(SystemTime::UNIX_EPOCH).is_ok(),
+      "timer start time should be after unix epoch",
+    )?;
+    ensure(
+      timing.duration <= timer.start_instant.elapsed(),
+      "timing duration should not exceed current elapsed time",
+    )
   }
 }

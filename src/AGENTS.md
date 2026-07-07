@@ -2,9 +2,9 @@
 
 This directory is the `pprof` library implementation. `backtrace/` is a distinct unwinder-backend subsystem with its own guide at `backtrace/AGENTS.md` — this file covers everything else under `src/`.
 
-## Current state (read before touching `timer.rs`, `profiler.rs`, or `addr_validate.rs`)
+## Current strict migration state
 
-As of this writing, `cargo build` fails on the pinned toolchain: `timer.rs`'s `extern "C"` block is not marked `unsafe extern` (required starting edition 2024), `profiler.rs`'s `#[no_mangle]` attribute is not wrapped as `#[unsafe(no_mangle)]`, and `addr_validate.rs`'s pipe helpers still assume `nix`'s pre-0.31 raw-`i32`-fd signatures where the pinned `nix 0.31` now returns/takes `OwnedFd`/`BorrowedFd` from `pipe2`/`read`/`write`. This is pre-existing state on the `upgrade` branch, not something a documentation-only change caused — run a fresh `cargo build` before assuming any change you make broke the crate.
+The repository now has template-managed strict policy files including `clippy.toml`, `deny.toml`, `dupes.toml`, and workspace lint declarations in the root `Cargo.toml`. `xtask` is opted into `[lints] workspace = true`; the main `pprof` crate is intentionally not opted in yet. Do not enable the main-crate lint opt-in as incidental cleanup while working in `src/`; that is a separate planned wave after the current gates are green.
 
 ## Signal-handler boundary
 
@@ -17,7 +17,8 @@ Code reachable from the `SIGPROF` handler must not allocate, lock, or panic. Tha
 - `timer.rs` — the interval timer (`setitimer`) that fires the profiling signal at the configured frequency.
 - `collector.rs` — signal-safe sample aggregation the handler writes into.
 - `frames.rs` — `UnresolvedFrames` (raw addresses captured in-signal) versus `Frames`/`Symbol` (demangled, resolved after sampling).
-- `report.rs` — `ReportBuilder` drains a `Profiler` into `UnresolvedReport`/`Report`; `Report` implements a human-readable `Debug`, plus feature-gated `.flamegraph()`/`.flamegraph_with_options()` (`flamegraph` feature, via `inferno`) and `.pprof()` (`prost-codec`/`protobuf-codec` feature, via the `protos` module).
+- `flamegraph.rs` — crate-owned SVG flamegraph layout and rendering behind the `flamegraph` feature.
+- `report.rs` — `ReportBuilder` drains a `Profiler` into `UnresolvedReport`/`Report`; `Report` implements a human-readable `Debug`, plus feature-gated `.flamegraph()`/`.flamegraph_with_options()` (`flamegraph` feature, delegated to `flamegraph.rs`) and `.pprof()` (`prost-codec`/`protobuf-codec` feature, via the `protos` module).
 - `addr_validate.rs` — address-readability check used by the unwinder before dereferencing a candidate frame address.
 - `perfmap.rs` (feature `perfmaps`) — emits a `perf`-style symbol map for JIT/dynamically-generated code.
 - `criterion.rs` (feature `criterion`) — `PProfProfiler`, a `criterion` custom profiler adapter.
@@ -25,4 +26,4 @@ Code reachable from the `SIGPROF` handler must not allocate, lock, or panic. Tha
 
 ## Policy note
 
-Unlike the pure tooling crates elsewhere in the `strict-rs` ecosystem, this crate has no `clippy.toml`/`[workspace.lints]` yet and is not panic-free: `unsafe` and `unwrap()`/`expect()` are pervasive by necessity (signal handling, raw pointers, FFI). Don't treat an existing `unsafe` block or `unwrap()` in this directory as a lint violation to silently "fix" — see the root `AGENTS.md` for the ecosystem-wide policy this crate does not yet opt into.
+This crate is being brought into strict policy in waves. Treat current `just lint` / `just ci` warnings as unresolved work and prefer structural fixes over suppressions. At the same time, preserve the signal-handler architecture: existing `unsafe` may be necessary around raw pointers, FFI, and unwinder integration, and should be made smaller or better documented only when the behavior being changed calls for it.

@@ -22,9 +22,8 @@ path = "src/main.rs"
 name = "precommit-hook"
 path = "src/precommit_hook.rs"
 
-# disabled for now
-# [lints]
-# workspace = true
+[lints]
+workspace = true
 
 [dependencies]
 agents-md.workspace = true
@@ -33,4 +32,4 @@ strict-xtask-cargo.workspace = true
 strict-xtask-core.workspace = true
 
 [dev-dependencies]
-strict-test-support = { workspace = true }
+strict-test-support.workspace = true
