@@ -13,8 +13,6 @@ use crate::ProfilerGuard;
 use crate::Report;
 #[cfg(feature = "flamegraph")]
 use crate::flamegraph::Options as FlamegraphOptions;
-#[cfg(any(feature = "prost-codec", feature = "protobuf-codec"))]
-use crate::protos::Message;
 
 pub enum Output<'a> {
   #[cfg(feature = "flamegraph")]
@@ -95,17 +93,13 @@ fn write_protobuf_output(report: &Report, mut output_file: File) {
     }
   };
 
-  let mut content = Vec::new();
-  #[cfg(all(feature = "prost-codec", not(feature = "protobuf-codec")))]
-  if let Err(err) = profile.encode(&mut content) {
-    log::error!("error while encoding prost profile: {err}");
-    return;
-  }
-  #[cfg(feature = "protobuf-codec")]
-  if let Err(err) = profile.write_to_vec(&mut content) {
-    log::error!("error while encoding protobuf profile: {err}");
-    return;
-  }
+  let content = match crate::protos::encode_profile(&profile) {
+    Ok(content) => content,
+    Err(err) => {
+      log::error!("error while encoding protobuf profile: {err}");
+      return;
+    }
+  };
 
   if let Err(err) = output_file.write_all(&content) {
     log::error!("error while writing protobuf profile: {err}");

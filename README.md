@@ -130,8 +130,7 @@ match guard.report().build() {
         let mut file = File::create("profile.pb").unwrap();
         let profile = report.pprof().unwrap();
 
-        let mut content = Vec::new();
-        profile.encode(&mut content).unwrap();
+        let content = pprof::protos::encode_profile(&profile).unwrap();
         file.write_all(&content).unwrap();
 
         println!("report: {}", &report);

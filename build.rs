@@ -38,23 +38,14 @@ fn emit_cargo_directive(directive: &str) -> Result<(), BuildError> {
 
 #[cfg(feature = "protobuf-codec")]
 fn generate_protobuf() -> Result<(), BuildError> {
-  use std::path::Path;
+  use std::path::PathBuf;
 
-  let customize = protobuf_codegen::Customize::default();
-  let out_dir = env_var("OUT_DIR")?;
-
-  let mut codegen = protobuf_codegen::Codegen::new();
-  codegen.pure();
-  codegen.inputs(["proto/profile.proto"]).includes(["proto"]);
-  codegen.customize(customize);
-  codegen
-    .out_dir(&out_dir)
-    .run()
-    .map_err(|err| BuildError::Protobuf(err.to_string()))?;
-
-  let mod_path = Path::new(&out_dir).join("mod.rs");
-  let mut module_file = std::fs::File::create(mod_path)?;
-  write!(module_file, "pub mod profile;")?;
+  let generated_dir = PathBuf::from(env_var("OUT_DIR")?).join("protobuf_generated");
+  let mut codegen = protobuf_codegen::CodeGen::new();
+  codegen.input("proto/profile.proto");
+  codegen.include(".");
+  codegen.output_dir(generated_dir);
+  codegen.generate_and_compile().map_err(BuildError::Protobuf)?;
   Ok(())
 }
 
@@ -135,6 +126,7 @@ fn configure_backend_cfgs() -> Result<(), BuildError> {
 fn main() -> Result<(), BuildError> {
   emit_cargo_directive("cargo:rerun-if-changed=proto/profile.proto")?;
   emit_cargo_directive("cargo:rerun-if-changed=proto/perftools.profiles.rs")?;
+  emit_cargo_directive("cargo:rerun-if-env-changed=PROTOC")?;
   configure_backend_cfgs()?;
 
   #[cfg(all(feature = "prost-codec", not(feature = "protobuf-codec")))]

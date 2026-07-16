@@ -20,5 +20,5 @@ The root `Cargo.toml` declares an explicit `[[example]]` stanza with `required-f
 - `flamegraph.rs` / `multithread_flamegraph.rs` — `Report::flamegraph()` SVG output, single- and multi-threaded.
 - `post_processor.rs` — `frames_post_processor` for renaming/grouping thread names before a report is built.
 - `backtrace_while_sampling.rs` — recursion plus a nested `backtrace::Backtrace::new()` call while the profiler is sampling, then a flamegraph of the result.
-- `profile_proto_with_prost.rs` / `profile_proto_with_protobuf_codec.rs` — `Report::pprof()` protobuf output, one per codec feature; both use `pprof::protos::Message` from the crate's `protos` module.
+- `profile_proto_with_prost.rs` / `profile_proto_with_protobuf_codec.rs` — `Report::pprof()` protobuf output, one per codec feature; both use `pprof::protos::encode_profile` from the crate's `protos` module.
 - `criterion.rs` — `pprof::criterion::PProfProfiler` wired into a `criterion` benchmark (fibonacci) via `Criterion::default().with_profiler(...)`.

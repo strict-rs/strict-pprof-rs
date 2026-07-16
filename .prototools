@@ -1,0 +1,4 @@
+protoc = "=35.1"
+
+[plugins.tools]
+protoc = "https://raw.githubusercontent.com/b4nst/proto-plugins/6574ad30cb7bd59b3429b0e2c51fe245d350ef70/toml/protoc.toml"

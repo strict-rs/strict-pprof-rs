@@ -12,6 +12,6 @@ The profiling pipeline is split between signal-handler-safe capture and post-sam
 - `addr_validate.rs` checks whether a candidate address is safely readable before backend code dereferences it.
 - `perfmap.rs` behind `perfmaps` resolves JIT or dynamically generated symbols from `/tmp/perf-<pid>.map`.
 - `criterion.rs` behind `criterion` wires `PProfProfiler` into Criterion's profiling hook.
-- `build.rs` owns protobuf generation from `proto/profile.proto`: `protobuf-codec` writes generated code under `OUT_DIR`, while `prost-codec` refreshes the committed `proto/perftools.profiles.rs` artifact when the proto or generator config fingerprint changes.
+- `build.rs` owns protobuf generation from `proto/profile.proto`: `protobuf-codec` uses the `proto`-pinned exact `protoc 35.1` compiler and writes generated v4 bindings under `OUT_DIR/protobuf_generated/proto/`, while `prost-codec` refreshes the committed `proto/perftools.profiles.rs` artifact when the proto or generator config fingerprint changes.
 
 Code reachable from `perf_signal_handler` must stay allocation-conscious, nonblocking, and panic-averse. Symbolication, demangling, report aggregation, protobuf creation, and SVG rendering happen outside that signal-handler boundary and may use ordinary owned data structures and typed errors.

@@ -71,7 +71,7 @@ The profiling pipeline is split between signal-handler-safe capture and post-sam
 - `addr_validate.rs` checks whether a candidate address is safely readable before backend code dereferences it.
 - `perfmap.rs` behind `perfmaps` resolves JIT or dynamically generated symbols from `/tmp/perf-<pid>.map`.
 - `criterion.rs` behind `criterion` wires `PProfProfiler` into Criterion's profiling hook.
-- `build.rs` owns protobuf generation from `proto/profile.proto`: `protobuf-codec` writes generated code under `OUT_DIR`, while `prost-codec` refreshes the committed `proto/perftools.profiles.rs` artifact when the proto or generator config fingerprint changes.
+- `build.rs` owns protobuf generation from `proto/profile.proto`: `protobuf-codec` uses the `proto`-pinned exact `protoc 35.1` compiler and writes generated v4 bindings under `OUT_DIR/protobuf_generated/proto/`, while `prost-codec` refreshes the committed `proto/perftools.profiles.rs` artifact when the proto or generator config fingerprint changes.
 
 Code reachable from `perf_signal_handler` must stay allocation-conscious, nonblocking, and panic-averse. Symbolication, demangling, report aggregation, protobuf creation, and SVG rendering happen outside that signal-handler boundary and may use ordinary owned data structures and typed errors.
 
@@ -127,14 +127,14 @@ Only `cpp` is enabled by default. Feature work must preserve the intended preced
 - `cpp` enables C++ demangling through `symbolic-demangle/cpp`; without it, C++ symbols remain mangled while Rust demangling still works.
 - `flamegraph` enables the crate-owned SVG renderer through the permissive `svg` dependency. Do not reintroduce `inferno` or any `CDDL-1.0` dependency path.
 - `prost-codec` enables `prost`, `prost-build`, `sha2`, and `_protobuf`; generated prost bindings still derive `::prost::Message` through `prost`, not a direct root `prost-derive` dependency.
-- `protobuf-codec` enables `protobuf`, `protobuf-codegen`, and `_protobuf`.
+- `protobuf-codec` enables `protobuf`, `protobuf-codegen`, and `_protobuf`, generating v4 bindings under `OUT_DIR` with exact `protoc 35.1` from repo-local `proto` configuration.
 - `_protobuf` is private plumbing for report generation shared by the two public codec features. When both codec features are present, the crate uses the `protobuf-codec` generated module.
 - `framehop-unwinder` enables `framehop`, `memmap2`, and `object`; where supported it takes precedence over `frame-pointer`.
 - `frame-pointer` enables the frame-pointer backend for supported architectures when `framehop-unwinder` is not selected.
 - `perfmaps` enables dynamic symbol lookup through `arc-swap` and `/tmp/perf-<pid>.map`.
 - `large-depth` and `huge-depth` change `MAX_DEPTH`; do not enable both intentionally.
 
-Run the relevant feature command when changing feature declarations, generated protobuf bindings, flamegraph behavior, or backend selection: `just hack` for the matrix, `cargo check --features flamegraph --locked`, `cargo check --features prost-codec --locked`, and `cargo check --features protobuf-codec --locked` for focused confirmation.
+Run the relevant feature command when changing feature declarations, generated protobuf bindings, flamegraph behavior, or backend selection: `just x proto setup` to install and validate pinned `protoc`, `just x proto gen` to drive both codec generators, `just x proto update` to force-refresh the committed `prost` binding, `just x matrix` for the protobuf/prost validation matrix, `just hack` for the full feature matrix, `cargo check --features flamegraph --locked`, `cargo check --features prost-codec --locked`, and `cargo check --features protobuf-codec --locked` for focused confirmation.
 
 ## Implementation Constraints
 

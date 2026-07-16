@@ -3,8 +3,6 @@
 use std::error::Error;
 
 use pprof::Report;
-#[cfg(any(feature = "prost-codec", feature = "protobuf-codec"))]
-use pprof::protos::Message;
 
 use crate::prime;
 
@@ -24,13 +22,7 @@ pub fn run_prost_profile() -> ExampleResult<()> {
   let (prime_count, report) = collect_partitioned_report()?;
   log_prime_count(prime_count);
 
-  write_encoded_profile(&report, |profile, content| {
-    #[cfg(all(feature = "prost-codec", not(feature = "protobuf-codec")))]
-    profile.encode(content)?;
-    #[cfg(feature = "protobuf-codec")]
-    profile.write_to_vec(content)?;
-    Ok(())
-  })?;
+  write_encoded_profile(&report)?;
 
   log_report(&report);
   Ok(())
@@ -41,10 +33,7 @@ pub fn run_protobuf_profile() -> ExampleResult<()> {
   let (prime_count, report) = collect_partitioned_report()?;
   log_prime_count(prime_count);
 
-  write_encoded_profile(&report, |profile, content| {
-    profile.write_to_vec(content)?;
-    Ok(())
-  })?;
+  write_encoded_profile(&report)?;
 
   log_report(&report);
   Ok(())
@@ -59,13 +48,9 @@ pub fn collect_partitioned_report() -> ExampleResult<(usize, Report)> {
 }
 
 #[cfg(any(feature = "prost-codec", feature = "protobuf-codec"))]
-fn write_encoded_profile<F>(report: &Report, encode: F) -> ExampleResult<()>
-where
-  F: FnOnce(&pprof::protos::Profile, &mut Vec<u8>) -> ExampleResult<()>,
-{
+fn write_encoded_profile(report: &Report) -> ExampleResult<()> {
   let profile = report.pprof()?;
-  let mut content = Vec::new();
-  encode(&profile, &mut content)?;
+  let content = pprof::protos::encode_profile(&profile)?;
   write_profile_bytes(&content)
 }
 

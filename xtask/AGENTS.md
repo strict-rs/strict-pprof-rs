@@ -18,6 +18,7 @@ Prefer small, explicit workflows over clever general runners. A new subcommand s
 
 - Keep reusable workflow behavior in the owning shared `strict-xtask-*` crate, not in this repository's `xtask`.
 - Keep repo-specific automation behind `just x <name>` through the extension registry when the product genuinely needs local behavior.
+- Keep local protobuf automation under `just x proto` (`setup`, `update`, `gen`) and protobuf/prost verification under `just x matrix`; share the pinned `protoc` setup path instead of duplicating toolchain orchestration.
 - Preserve the current `[lints] workspace = true` opt-in for `xtask`; do not use `xtask` lint compliance as permission to opt the main `pprof` crate into workspace lints in the same wave.
 - Use `just`, not direct `cargo xtask`, when running workflows from this repository.
 

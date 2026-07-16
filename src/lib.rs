@@ -88,15 +88,29 @@ pub mod protos {
   pub use prost::Message;
 
   include!(concat!(env!("CARGO_MANIFEST_DIR"), "/proto/perftools.profiles.rs"));
+
+  pub type EncodeError = prost::EncodeError;
+
+  pub fn encode_profile(profile: &Profile) -> std::result::Result<Vec<u8>, EncodeError> {
+    let mut content = Vec::new();
+    profile.encode(&mut content)?;
+    Ok(content)
+  }
 }
 
 #[cfg(feature = "protobuf-codec")]
 pub mod protos {
   pub use protobuf::Message;
+  pub use protobuf::Serialize;
+  pub use protobuf::prelude::*;
 
-  include!(concat!(env!("OUT_DIR"), "/mod.rs"));
+  include!(concat!(env!("OUT_DIR"), "/protobuf_generated/proto/generated.rs"));
 
-  pub use self::profile::*;
+  pub type EncodeError = protobuf::SerializeError;
+
+  pub fn encode_profile(profile: &Profile) -> std::result::Result<Vec<u8>, EncodeError> {
+    profile.serialize()
+  }
 }
 
 #[cfg(feature = "criterion")]

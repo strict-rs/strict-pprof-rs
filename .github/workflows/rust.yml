@@ -23,8 +23,18 @@ jobs:
           override: true
           components: rustfmt, clippy
 
-      - name: Install protobuf compiler
-        run: sudo apt-get install -y protobuf-compiler
+      - name: Install proto toolchain
+        uses: moonrepo/setup-toolchain@v0
+        with:
+          auto-install: true
+
+      - name: Export protoc path
+        shell: bash
+        run: |
+          proto install protoc
+          echo "${PROTO_HOME:-$HOME/.proto}/shims" >> "$GITHUB_PATH"
+          echo "${PROTO_HOME:-$HOME/.proto}/bin" >> "$GITHUB_PATH"
+          echo "PROTOC=$(proto --reporter text bin protoc)" >> "$GITHUB_ENV"
 
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1.0.3
@@ -91,6 +101,19 @@ jobs:
           target: ${{ matrix.target }}
           override: true
 
+      - name: Install proto toolchain
+        uses: moonrepo/setup-toolchain@v0
+        with:
+          auto-install: true
+
+      - name: Export protoc path
+        shell: bash
+        run: |
+          proto install protoc
+          echo "${PROTO_HOME:-$HOME/.proto}/shims" >> "$GITHUB_PATH"
+          echo "${PROTO_HOME:-$HOME/.proto}/bin" >> "$GITHUB_PATH"
+          echo "PROTOC=$(proto --reporter text bin protoc)" >> "$GITHUB_ENV"
+
       - name: Run cargo build prost
         uses: actions-rs/cargo@v1.0.3
         with:
@@ -143,6 +166,19 @@ jobs:
           toolchain: ${{ matrix.toolchain }}
           target: ${{ matrix.target }}
           override: true
+
+      - name: Install proto toolchain
+        uses: moonrepo/setup-toolchain@v0
+        with:
+          auto-install: true
+
+      - name: Export protoc path
+        shell: bash
+        run: |
+          proto install protoc
+          echo "${PROTO_HOME:-$HOME/.proto}/shims" >> "$GITHUB_PATH"
+          echo "${PROTO_HOME:-$HOME/.proto}/bin" >> "$GITHUB_PATH"
+          echo "PROTOC=$(proto --reporter text bin protoc)" >> "$GITHUB_ENV"
 
       - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' }}
         name: Install musl

@@ -350,13 +350,12 @@ mod protobuf {
 
   #[cfg(feature = "protobuf-codec")]
   fn new_function(id: u64, name: i64, system_name: i64, filename: i64) -> protos::Function {
-    protos::Function {
-      id,
-      name,
-      system_name,
-      filename,
-      ..protos::Function::default()
-    }
+    let mut function = protos::Function::new();
+    function.set_id(id);
+    function.set_name(name);
+    function.set_system_name(system_name);
+    function.set_filename(filename);
+    function
   }
 
   #[cfg(all(feature = "prost-codec", not(feature = "protobuf-codec")))]
@@ -369,11 +368,10 @@ mod protobuf {
 
   #[cfg(feature = "protobuf-codec")]
   fn new_line(function_id: u64, line: i64) -> protos::Line {
-    protos::Line {
-      function_id,
-      line,
-      ..protos::Line::default()
-    }
+    let mut line_message = protos::Line::new();
+    line_message.set_function_id(function_id);
+    line_message.set_line(line);
+    line_message
   }
 
   #[cfg(all(feature = "prost-codec", not(feature = "protobuf-codec")))]
@@ -389,11 +387,10 @@ mod protobuf {
 
   #[cfg(feature = "protobuf-codec")]
   fn new_location(id: u64, line: protos::Line) -> protos::Location {
-    protos::Location {
-      id,
-      line: vec![line],
-      ..protos::Location::default()
-    }
+    let mut location = protos::Location::new();
+    location.set_id(id);
+    location.set_line(std::iter::once(line));
+    location
   }
 
   #[cfg(all(feature = "prost-codec", not(feature = "protobuf-codec")))]
@@ -408,11 +405,10 @@ mod protobuf {
 
   #[cfg(feature = "protobuf-codec")]
   fn new_label(key: i64, str: i64) -> protos::Label {
-    protos::Label {
-      key,
-      str,
-      ..protos::Label::default()
-    }
+    let mut label = protos::Label::new();
+    label.set_key(key);
+    label.set_str(str);
+    label
   }
 
   #[cfg(all(feature = "prost-codec", not(feature = "protobuf-codec")))]
@@ -426,12 +422,11 @@ mod protobuf {
 
   #[cfg(feature = "protobuf-codec")]
   fn new_sample(location_id: Vec<u64>, sample_values: Vec<i64>, label: protos::Label) -> protos::Sample {
-    protos::Sample {
-      location_id,
-      value: sample_values,
-      label: vec![label],
-      ..protos::Sample::default()
-    }
+    let mut sample = protos::Sample::new();
+    sample.set_location_id(location_id.into_iter());
+    sample.set_value(sample_values.into_iter());
+    sample.set_label(std::iter::once(label));
+    sample
   }
 
   #[cfg(all(feature = "prost-codec", not(feature = "protobuf-codec")))]
@@ -444,11 +439,10 @@ mod protobuf {
 
   #[cfg(feature = "protobuf-codec")]
   fn new_value_type(ty: i64, unit: i64) -> protos::ValueType {
-    protos::ValueType {
-      ty,
-      unit,
-      ..protos::ValueType::default()
-    }
+    let mut value_type = protos::ValueType::new();
+    value_type.set_ty(ty);
+    value_type.set_unit(unit);
+    value_type
   }
 
   struct ProfileParts {
@@ -485,18 +479,17 @@ mod protobuf {
 
   #[cfg(feature = "protobuf-codec")]
   fn new_profile(parts: ProfileParts) -> protos::Profile {
-    protos::Profile {
-      sample_type: parts.sample_type,
-      sample: parts.samples,
-      string_table: parts.string_table,
-      function: parts.functions,
-      location: parts.locations,
-      time_nanos: parts.time_nanos,
-      duration_nanos: parts.duration_nanos,
-      period_type: Some(parts.period_type).into(),
-      period: parts.period,
-      ..protos::Profile::default()
-    }
+    let mut profile = protos::Profile::new();
+    profile.set_sample_type(parts.sample_type.into_iter());
+    profile.set_sample(parts.samples.into_iter());
+    profile.set_string_table(parts.string_table.into_iter());
+    profile.set_function(parts.functions.into_iter());
+    profile.set_location(parts.locations.into_iter());
+    profile.set_time_nanos(parts.time_nanos);
+    profile.set_duration_nanos(parts.duration_nanos);
+    profile.set_period_type(parts.period_type);
+    profile.set_period(parts.period);
+    profile
   }
 
   fn insert_frame_strings(dedup_str: &mut HashSet<String>, key: &Frames) {
@@ -634,8 +627,172 @@ mod protobuf {
     use super::*;
     use crate::frames::Symbol;
 
-    fn string_at(profile: &protos::Profile, index: i64) -> &str {
-      &profile.string_table[index as usize]
+    struct ValueTypeData {
+      ty:   i64,
+      unit: i64,
+    }
+
+    struct LabelData {
+      key:       i64,
+      str_index: i64,
+    }
+
+    struct SampleData {
+      location_id: Vec<u64>,
+      value:       Vec<i64>,
+      label:       Vec<LabelData>,
+    }
+
+    struct LineData {
+      line: i64,
+    }
+
+    struct LocationData {
+      line: Vec<LineData>,
+    }
+
+    struct FunctionData {
+      name:     i64,
+      filename: i64,
+    }
+
+    struct ProfileData {
+      sample_type:    Vec<ValueTypeData>,
+      sample:         Vec<SampleData>,
+      string_table:   Vec<String>,
+      function:       Vec<FunctionData>,
+      location:       Vec<LocationData>,
+      period:         i64,
+      duration_nanos: i64,
+      time_nanos:     i64,
+    }
+
+    #[cfg(all(feature = "prost-codec", not(feature = "protobuf-codec")))]
+    fn profile_data(profile: &protos::Profile) -> std::result::Result<ProfileData, TestFailure> {
+      Ok(ProfileData {
+        sample_type:    profile
+          .sample_type
+          .iter()
+          .map(|value_type| ValueTypeData {
+            ty:   value_type.ty,
+            unit: value_type.unit,
+          })
+          .collect(),
+        sample:         profile
+          .sample
+          .iter()
+          .map(|sample| SampleData {
+            location_id: sample.location_id.clone(),
+            value:       sample.value.clone(),
+            label:       sample
+              .label
+              .iter()
+              .map(|label| LabelData {
+                key:       label.key,
+                str_index: label.str,
+              })
+              .collect(),
+          })
+          .collect(),
+        string_table:   profile.string_table.clone(),
+        function:       profile
+          .function
+          .iter()
+          .map(|function| FunctionData {
+            name:     function.name,
+            filename: function.filename,
+          })
+          .collect(),
+        location:       profile
+          .location
+          .iter()
+          .map(|location| LocationData {
+            line: location
+              .line
+              .iter()
+              .map(|line| LineData {
+                line: line.line
+              })
+              .collect(),
+          })
+          .collect(),
+        period:         profile.period,
+        duration_nanos: profile.duration_nanos,
+        time_nanos:     profile.time_nanos,
+      })
+    }
+
+    #[cfg(feature = "protobuf-codec")]
+    fn profile_data(profile: &protos::Profile) -> std::result::Result<ProfileData, TestFailure> {
+      Ok(ProfileData {
+        sample_type:    profile
+          .sample_type()
+          .iter()
+          .map(|value_type| ValueTypeData {
+            ty:   value_type.ty(),
+            unit: value_type.unit(),
+          })
+          .collect(),
+        sample:         profile
+          .sample()
+          .iter()
+          .map(|sample| SampleData {
+            location_id: sample.location_id().iter().collect(),
+            value:       sample.value().iter().collect(),
+            label:       sample
+              .label()
+              .iter()
+              .map(|label| LabelData {
+                key:       label.key(),
+                str_index: label.str(),
+              })
+              .collect(),
+          })
+          .collect(),
+        string_table:   profile
+          .string_table()
+          .iter()
+          .map(|value| {
+            ensure_ok(
+              value.to_str().map(std::borrow::ToOwned::to_owned),
+              "string table entry should be valid utf-8",
+            )
+          })
+          .collect::<std::result::Result<Vec<_>, _>>()?,
+        function:       profile
+          .function()
+          .iter()
+          .map(|function| FunctionData {
+            name:     function.name(),
+            filename: function.filename(),
+          })
+          .collect(),
+        location:       profile
+          .location()
+          .iter()
+          .map(|location| LocationData {
+            line: location
+              .line()
+              .iter()
+              .map(|line| LineData {
+                line: line.line()
+              })
+              .collect(),
+          })
+          .collect(),
+        period:         profile.period(),
+        duration_nanos: profile.duration_nanos(),
+        time_nanos:     profile.time_nanos(),
+      })
+    }
+
+    fn string_at(profile: &ProfileData, index: i64) -> std::result::Result<&str, TestFailure> {
+      let index = ensure_ok(usize::try_from(index), "string table index should fit usize")?;
+      let value = ensure_some(
+        profile.string_table.get(index),
+        "string table index should reference an existing entry",
+      )?;
+      Ok(value.as_str())
     }
 
     fn report(report_data: HashMap<Frames, isize>, frequency: i32) -> Report {
@@ -669,25 +826,25 @@ mod protobuf {
 
     #[test]
     fn pprof_empty_report_has_required_metadata() -> std::result::Result<(), TestFailure> {
-      let profile = ensure_ok(report(HashMap::new(), 100).pprof(), "empty pprof report should build")?;
+      let profile = profile_data(&ensure_ok(report(HashMap::new(), 100).pprof(), "empty pprof report should build")?)?;
 
       ensure(profile.sample.is_empty(), "empty report should not contain samples")?;
-      ensure(string_at(&profile, 0).is_empty(), "first string table entry should be empty")?;
+      ensure(string_at(&profile, 0)?.is_empty(), "first string table entry should be empty")?;
       ensure_eq(&profile.sample_type.len(), &2, "profile should contain sample and cpu value types")?;
       ensure(
-        string_at(&profile, profile.sample_type[0].ty) == SAMPLES,
+        string_at(&profile, profile.sample_type[0].ty)? == SAMPLES,
         "first value type should be samples",
       )?;
       ensure(
-        string_at(&profile, profile.sample_type[0].unit) == COUNT,
+        string_at(&profile, profile.sample_type[0].unit)? == COUNT,
         "first value unit should be count",
       )?;
       ensure(
-        string_at(&profile, profile.sample_type[1].ty) == CPU,
+        string_at(&profile, profile.sample_type[1].ty)? == CPU,
         "second value type should be cpu",
       )?;
       ensure(
-        string_at(&profile, profile.sample_type[1].unit) == NANOSECONDS,
+        string_at(&profile, profile.sample_type[1].unit)? == NANOSECONDS,
         "second value unit should be nanoseconds",
       )?;
       ensure_eq(&profile.period, &10_000_000, "profile period should match frequency")?;
@@ -713,7 +870,7 @@ mod protobuf {
       let frames = test_frames("worker-thread", 7, vec![vec![test_symbol(b"sampled_function", 42, "src/lib.rs")]]);
       let report_data = HashMap::from([(frames, 3)]);
 
-      let profile = ensure_ok(report(report_data, 100).pprof(), "pprof report should build")?;
+      let profile = profile_data(&ensure_ok(report(report_data, 100).pprof(), "pprof report should build")?)?;
 
       ensure_eq(&profile.sample.len(), &1, "profile should contain one sample")?;
       let sample = &profile.sample[0];
@@ -724,22 +881,25 @@ mod protobuf {
       ensure(sample.location_id == vec![1], "sample should point at first location")?;
       ensure_eq(&profile.function.len(), &1, "profile should contain one function")?;
       ensure(
-        string_at(&profile, profile.function[0].name) == "sampled_function",
+        string_at(&profile, profile.function[0].name)? == "sampled_function",
         "function name should use string table",
       )?;
       ensure(
-        string_at(&profile, profile.function[0].filename) == "src/lib.rs",
+        string_at(&profile, profile.function[0].filename)? == "src/lib.rs",
         "filename should use string table",
       )?;
       ensure_eq(&profile.location.len(), &1, "profile should contain one location")?;
       ensure_eq(&profile.location[0].line[0].line, &42, "line number should be encoded")?;
 
       let thread_label = ensure_some(
-        sample.label.iter().find(|label| string_at(&profile, label.key) == THREAD),
+        sample
+          .label
+          .iter()
+          .find(|label| string_at(&profile, label.key).is_ok_and(|value| value == THREAD)),
         "thread label should be present",
       )?;
       ensure(
-        string_at(&profile, thread_label.str) == "worker-thread",
+        string_at(&profile, thread_label.str_index)? == "worker-thread",
         "thread label should use thread name",
       )
     }
@@ -749,15 +909,18 @@ mod protobuf {
       let frames = test_frames("", 42, vec![vec![test_symbol(b"sampled_function", 42, "src/lib.rs")]]);
       let report_data = HashMap::from([(frames, 1)]);
 
-      let profile = ensure_ok(report(report_data, 100).pprof(), "pprof report should build")?;
+      let profile = profile_data(&ensure_ok(report(report_data, 100).pprof(), "pprof report should build")?)?;
       let sample = ensure_some(profile.sample.first(), "profile should contain one sample")?;
       let thread_label = ensure_some(
-        sample.label.iter().find(|label| string_at(&profile, label.key) == THREAD),
+        sample
+          .label
+          .iter()
+          .find(|label| string_at(&profile, label.key).is_ok_and(|value| value == THREAD)),
         "thread label should be present",
       )?;
 
       ensure(
-        string_at(&profile, thread_label.str) == "42",
+        string_at(&profile, thread_label.str_index)? == "42",
         "unnamed thread labels should fall back to the thread id",
       )
     }
@@ -769,10 +932,10 @@ mod protobuf {
         vec![test_symbol(b"inner_function", 20, "src/inner.rs")],
       ]);
 
-      let profile = ensure_ok(
+      let profile = profile_data(&ensure_ok(
         report(HashMap::from([(frames, 1)]), 100).pprof(),
         "multi-frame pprof report should build",
-      )?;
+      )?)?;
       let sample = ensure_some(profile.sample.first(), "profile should contain one sample")?;
 
       ensure(
@@ -781,11 +944,11 @@ mod protobuf {
       )?;
       ensure_eq(&profile.function.len(), &2, "profile should contain both functions")?;
       ensure(
-        string_at(&profile, profile.function[0].name) == "outer_function",
+        string_at(&profile, profile.function[0].name)? == "outer_function",
         "first function should correspond to the first frame",
       )?;
       ensure(
-        string_at(&profile, profile.function[1].name) == "inner_function",
+        string_at(&profile, profile.function[1].name)? == "inner_function",
         "second function should correspond to the second frame",
       )?;
       ensure_eq(
@@ -803,15 +966,21 @@ mod protobuf {
     #[test]
     fn pprof_thread_label_uses_thread_id_when_name_is_empty() -> std::result::Result<(), TestFailure> {
       let frames = test_frames("", 9, Vec::new());
-      let profile = ensure_ok(report(HashMap::from([(frames, 1)]), 100).pprof(), "pprof report should build")?;
+      let profile = profile_data(&ensure_ok(
+        report(HashMap::from([(frames, 1)]), 100).pprof(),
+        "pprof report should build",
+      )?)?;
       let sample = ensure_some(profile.sample.first(), "profile should contain sample")?;
       let thread_label = ensure_some(
-        sample.label.iter().find(|label| string_at(&profile, label.key) == THREAD),
+        sample
+          .label
+          .iter()
+          .find(|label| string_at(&profile, label.key).is_ok_and(|value| value == THREAD)),
         "thread label should be present",
       )?;
 
       ensure(
-        string_at(&profile, thread_label.str) == "9",
+        string_at(&profile, thread_label.str_index)? == "9",
         "thread label should use thread id when thread name is empty",
       )
     }
@@ -820,10 +989,10 @@ mod protobuf {
     fn pprof_reuses_locations_for_duplicate_symbol_names() -> std::result::Result<(), TestFailure> {
       let first = test_frames("first-thread", 1, vec![vec![test_symbol(b"shared_function", 7, "src/shared.rs")]]);
       let second = test_frames("second-thread", 2, vec![vec![test_symbol(b"shared_function", 7, "src/shared.rs")]]);
-      let profile = ensure_ok(
+      let profile = profile_data(&ensure_ok(
         report(HashMap::from([(first, 1), (second, 2)]), 100).pprof(),
         "pprof report should build",
-      )?;
+      )?)?;
 
       ensure_eq(&profile.sample.len(), &2, "profile should contain both samples")?;
       ensure_eq(&profile.function.len(), &1, "duplicate symbol names should share one function")?;
@@ -845,7 +1014,7 @@ mod protobuf {
         },
       };
 
-      let profile = ensure_ok(report.pprof(), "pre-epoch pprof report should build")?;
+      let profile = profile_data(&ensure_ok(report.pprof(), "pre-epoch pprof report should build")?)?;
 
       ensure_eq(
         &profile.time_nanos,
