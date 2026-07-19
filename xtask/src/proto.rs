@@ -469,7 +469,10 @@ mod tests {
       matches!(error, CoreError::WorkflowFailure { .. }),
       "empty protoc path must remain a workflow-owned error",
     )?;
-    ensure(rendered.contains("empty protoc path"), "empty protoc path must explain the validation failure")?;
+    ensure(
+      rendered.contains("empty protoc path"),
+      "empty protoc path must explain the validation failure",
+    )?;
     let mut expected = expected_setup_requests(&context, "/tool/protoc");
     expected.truncate(2);
     ensure(
@@ -527,10 +530,7 @@ mod tests {
       "fake generation leaves the forced-refresh artifact absent",
     )?;
     let setup_events = expected_setup_requests(&context, "/tool/protoc");
-    let mut expected = setup_events
-      .into_iter()
-      .map(EffectEvent::Process)
-      .collect::<Vec<EffectEvent>>();
+    let mut expected = setup_events.into_iter().map(EffectEvent::Process).collect::<Vec<EffectEvent>>();
     expected.extend([
       EffectEvent::PathState(generated.clone()),
       EffectEvent::ReadBytes(generated.clone()),
@@ -570,10 +570,7 @@ mod tests {
       "update must restore the original file if generation leaves it missing",
     )?;
     let setup_events = expected_setup_requests(&context, "/tool/protoc");
-    let mut expected = setup_events
-      .into_iter()
-      .map(EffectEvent::Process)
-      .collect::<Vec<EffectEvent>>();
+    let mut expected = setup_events.into_iter().map(EffectEvent::Process).collect::<Vec<EffectEvent>>();
     let first_generation = ensure_some(
       expected_generation_requests(&context, &root, "/tool/protoc").into_iter().next(),
       "generation request fixture must contain the first codec check",
@@ -617,18 +614,12 @@ mod tests {
       "rollback must not create a binding that was absent before update",
     )?;
     let setup_events = expected_setup_requests(&context, "/tool/protoc");
-    let mut expected = setup_events
-      .into_iter()
-      .map(EffectEvent::Process)
-      .collect::<Vec<EffectEvent>>();
+    let mut expected = setup_events.into_iter().map(EffectEvent::Process).collect::<Vec<EffectEvent>>();
     let first_generation = ensure_some(
       expected_generation_requests(&context, &root, "/tool/protoc").into_iter().next(),
       "generation request fixture must contain the first codec check",
     )?;
-    expected.extend([
-      EffectEvent::PathState(generated),
-      EffectEvent::Process(first_generation),
-    ]);
+    expected.extend([EffectEvent::PathState(generated), EffectEvent::Process(first_generation)]);
     ensure(
       recorder.events() == expected,
       "missing input must skip read, removal, and rollback write effects",
@@ -646,21 +637,9 @@ mod tests {
     ensure(
       args
         == [
+          owned_arguments(&["check", "--manifest-path", &manifest, "--features", "prost-codec", "--locked"]),
           owned_arguments(&[
-            "check",
-            "--manifest-path",
-            &manifest,
-            "--features",
-            "prost-codec",
-            "--locked",
-          ]),
-          owned_arguments(&[
-            "check",
-            "--manifest-path",
-            &manifest,
-            "--features",
-            "protobuf-codec",
-            "--locked",
+            "check", "--manifest-path", &manifest, "--features", "protobuf-codec", "--locked",
           ]),
         ],
       "generation steps must remain the focused prost/protobuf checks",
@@ -682,14 +661,7 @@ mod tests {
       extension_request(
         context,
         "cargo",
-        &[
-          "check",
-          "--manifest-path",
-          &manifest,
-          "--features",
-          "prost-codec",
-          "--locked",
-        ],
+        &["check", "--manifest-path", &manifest, "--features", "prost-codec", "--locked"],
         ToolColor::CargoGlobal,
         OutputPolicy::Inherit,
         &environment,
@@ -698,12 +670,7 @@ mod tests {
         context,
         "cargo",
         &[
-          "check",
-          "--manifest-path",
-          &manifest,
-          "--features",
-          "protobuf-codec",
-          "--locked",
+          "check", "--manifest-path", &manifest, "--features", "protobuf-codec", "--locked",
         ],
         ToolColor::CargoGlobal,
         OutputPolicy::Inherit,

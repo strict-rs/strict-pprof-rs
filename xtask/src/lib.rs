@@ -31,10 +31,7 @@ mod tests {
 
   #[test]
   fn extension_registry_exposes_the_local_x_router() -> Result<(), TestFailure> {
-    let command_set = ensure_ok(
-      extensions::commands(),
-      "the local extension registry must build",
-    )?;
+    let command_set = ensure_ok(extensions::commands(), "the local extension registry must build")?;
     ensure(
       command_set.surface() == CommandSurface::XtaskExtension,
       "the local command set must remain on the extension surface",

@@ -11,7 +11,6 @@ use strict_test_support::TestFailure;
 use strict_test_support::process_output;
 use template_core::cli::color::ColorContext;
 use template_core::cli::context::CommandContext;
-use template_core::cli::output::OutputSink;
 use template_core::sys::process::ToolColor;
 
 /// One process result consumed by a local extension test.
@@ -26,9 +25,7 @@ pub(crate) enum ProcessFixture<'output> {
 }
 
 /// Construct a command context backed by the shared ecosystem recorder.
-pub(crate) fn recording_context(
-  fixtures: &[ProcessFixture<'_>],
-) -> Result<(CommandContext, Arc<RecordingEffects>), TestFailure> {
+pub(crate) fn recording_context(fixtures: &[ProcessFixture<'_>]) -> Result<(CommandContext, Arc<RecordingEffects>), TestFailure> {
   let recorder = Arc::new(RecordingEffects::default());
   for fixture in fixtures {
     let output = match *fixture {
@@ -38,10 +35,9 @@ pub(crate) fn recording_context(
     };
     recorder.queue_process_result(Ok(output));
   }
-  let context = CommandContext::with_effects(
+  let (context, _output) = CommandContext::with_captured_effects(
     PathBuf::from("/work/here"),
     ColorContext::captured_auto_for_tests(),
-    OutputSink::captured().0,
     Arc::clone(&recorder),
   );
   Ok((context, recorder))
@@ -57,14 +53,7 @@ pub(crate) fn extension_request(
   environment: &[EnvironmentChange],
 ) -> ProcessRequest {
   let owned_arguments = arguments.iter().map(|argument| (*argument).to_owned()).collect::<Vec<_>>();
-  context.process_request(
-    program,
-    &owned_arguments,
-    color,
-    stdout,
-    OutputPolicy::Inherit,
-    environment,
-  )
+  context.process_request(program, &owned_arguments, color, stdout, OutputPolicy::Inherit, environment)
 }
 
 /// Build the exact setup request sequence shared by both local commands.
@@ -86,14 +75,8 @@ pub(crate) fn expected_setup_requests(context: &CommandContext, protoc: &str) ->
       OutputPolicy::Capture,
       &[],
     ),
-    extension_request(
-      context,
-      protoc,
-      &["--version"],
-      ToolColor::CapturedPlain,
-      OutputPolicy::Capture,
-      &[],
-    ),
+    extension_request(context, protoc, &["--version"], ToolColor::CapturedPlain, OutputPolicy::Capture, &[
+    ]),
   ]
 }
 

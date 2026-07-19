@@ -74,6 +74,7 @@ symbolic-demangle = { workspace = true, default-features = false, features = ["r
 criterion = { workspace = true }
 rand = { workspace = true }
 parking_lot = { workspace = true }
+proptest.workspace = true
 strict-test-support = { workspace = true }
 
 [build-dependencies]
@@ -127,14 +128,14 @@ log = "0.4"
 nix = { version = "0.31", default-features = false }
 spin = "0.12"
 tempfile = "3.27"
-thiserror = "2"
+thiserror = { version = "2"}
 findshlibs = "0.10"
 cfg-if = "1.0"
 smallvec = "1.15"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 svg = "0.18"
 prost = "0.14"
-protobuf = "4.36.0-rc.1"
+protobuf = "4.35.1-release"
 criterion = "0.8"
 aligned-vec = "0.6"
 framehop = "0.16"
@@ -145,14 +146,14 @@ symbolic-demangle = { version = "13.9", default-features = false }
 rand = "0.10.2"
 prost-build = "0.14"
 sha2 = "0.11"
-protobuf-codegen = "4.36.0-rc.1"
+protobuf-codegen = "4.35.1-release"
 
-bpaf = { git = "https://github.com/strict-rs/strict-bpaf.git", branch = "sync", version = "0.10", default-features = false }
-strict-standard = { version = "0.1.0", git = "https://github.com/earthlings-dev/strict-standard-rs.git", branch = "main" }
-template-core = { version = "0.1.0", git = "https://github.com/earthlings-dev/template-rs.git", branch = "main" }
-template-xtask = { version = "0.1.0", git = "https://github.com/earthlings-dev/template-rs.git", branch = "main" }
-trybuild = { git = "https://github.com/strict-rs/strict-trybuild.git", branch = "strict", version = "1" }
-strict-test-support = { version = "0.1.0", git = "https://github.com/earthlings-dev/strict-test-support-rs.git", branch = "main" }
+bpaf = {  version = "0.10", default-features = false, git = "https://github.com/strict-rs/strict-bpaf.git", branch = "sync" }
+strict-standard = { version = "0.1.0", git = "https://github.com/earthlings-dev/strict-standard-rs.git", branch = "main"}
+template-core = { version = "0.1.0", git = "https://github.com/earthlings-dev/template-rs.git", branch = "main"}
+template-xtask = { version = "0.1.0", git = "https://github.com/earthlings-dev/template-rs.git", branch = "main"}
+trybuild = {  version = "1", git = "https://github.com/strict-rs/strict-trybuild.git", branch = "strict" }
+strict-test-support = { version = "0.1.0", git = "https://github.com/earthlings-dev/strict-test-support-rs.git", branch = "main"}
 
 syn         = { version = "2", features = ["full", "visit"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
@@ -163,23 +164,24 @@ anstyle = "1"
 snapbox = { version = "1.2", features = ["diff"], default-features = false }
 globset = "0.4"
 parking_lot = "0.12"
-proptest = { git = "https://github.com/strict-rs/strict-proptest.git", branch = "strict", version = "1.11", features = ["std"], default-features = false }
+proptest = {  version = "2", features = ["std"], default-features = false, git = "https://github.com/strict-rs/strict-proptest.git", branch = "strict" }
 serde_json = "1"
 toml = "1.1"
 
 [patch.crates-io]
 
+
 # strict-proptest (comment out if unused, do not remove)
-# proptest = { version = "1.11.0", git = "https://github.com/strict-rs/strict-proptest.git", branch = "upgrade" }
-# proptest-macro = { version = "0.5.0", git = "https://github.com/strict-rs/strict-proptest.git", branch = "upgrade" }
-# proptest-state-machine = { version = "0.8", git = "https://github.com/strict-rs/strict-proptest.git", branch = "upgrade" }
-# proptest-derive = { version = "0.8", git = "https://github.com/strict-rs/strict-proptest.git", branch = "upgrade" }
+# proptest = { version = "2.0.0", git = "https://github.com/strict-rs/strict-proptest.git", branch = "strict" }
+# proptest-macro = { version = "2.0.0", git = "https://github.com/strict-rs/strict-proptest.git", branch = "strict" }
+# proptest-state-machine = { version = "2.0.0", git = "https://github.com/strict-rs/strict-proptest.git", branch = "strict" }
+# proptest-derive = { version = "2.0.0", git = "https://github.com/strict-rs/strict-proptest.git", branch = "strict" }
 
 # strict-trybuild (comment out if unused, do not remove)
 # trybuild = { git = "https://github.com/strict-rs/strict-trybuild.git", branch = "strict", version = "1" }
 
 # strict-bpaf (comment out if unused, do not remove)
-bpaf = { git = "https://github.com/strict-rs/strict-bpaf.git", branch = "sync", version = "0.10" }
+bpaf = {  version = "0.10", git = "https://github.com/strict-rs/strict-bpaf.git", branch = "sync" }
 # bpaf_derive = { git = "https://github.com/strict-rs/strict-bpaf.git", branch = "sync", version = "0.10.0" }
 # bpaf_cauwugo = { git = "https://github.com/strict-rs/strict-bpaf.git", branch = "sync", version = "0.10.0" }
 

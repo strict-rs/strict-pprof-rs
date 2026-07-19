@@ -1,7 +1,6 @@
 //! Local matrix extension command: `just x matrix`.
 
 use std::path::Path;
-use std::path::PathBuf;
 
 use bpaf::OptionParser;
 use bpaf::Parser as _;
@@ -162,12 +161,7 @@ fn steps_require_protoc(steps: &[CommandStep]) -> bool {
   clippy::single_call_fn,
   reason = "one step combines status output, directory policy, and process execution as a named unit"
 )]
-fn run_step(
-  context: &CommandContext,
-  root: &Path,
-  step: &CommandStep,
-  toolchain: Option<&proto::Toolchain>,
-) -> template_core::Result<()> {
+fn run_step(context: &CommandContext, root: &Path, step: &CommandStep, toolchain: Option<&proto::Toolchain>) -> template_core::Result<()> {
   context.status(StatusKind::Info, plain(format!("matrix: {}", step.label)))?;
   let environment = if step.needs_protoc {
     let Some(validated_toolchain) = toolchain else {
@@ -528,12 +522,25 @@ mod tests {
         &context,
         "cargo",
         &[
-          "check",
-          "--manifest-path",
-          &manifest,
-          "--features",
-          "protobuf-codec",
-          "--locked",
+          "check", "--manifest-path", &manifest, "--features", "protobuf-codec", "--locked",
+        ],
+        ToolColor::CargoGlobal,
+        OutputPolicy::Inherit,
+        &protoc_environment,
+      ),
+      extension_request(
+        &context,
+        "cargo",
+        &["check", "--manifest-path", &manifest, "--features", "prost-codec", "--locked"],
+        ToolColor::CargoGlobal,
+        OutputPolicy::Inherit,
+        &protoc_environment,
+      ),
+      extension_request(
+        &context,
+        "cargo",
+        &[
+          "check", "--manifest-path", &manifest, "--features", "flamegraph,protobuf-codec", "--all-targets", "--locked",
         ],
         ToolColor::CargoGlobal,
         OutputPolicy::Inherit,
@@ -543,44 +550,7 @@ mod tests {
         &context,
         "cargo",
         &[
-          "check",
-          "--manifest-path",
-          &manifest,
-          "--features",
-          "prost-codec",
-          "--locked",
-        ],
-        ToolColor::CargoGlobal,
-        OutputPolicy::Inherit,
-        &protoc_environment,
-      ),
-      extension_request(
-        &context,
-        "cargo",
-        &[
-          "check",
-          "--manifest-path",
-          &manifest,
-          "--features",
-          "flamegraph,protobuf-codec",
-          "--all-targets",
-          "--locked",
-        ],
-        ToolColor::CargoGlobal,
-        OutputPolicy::Inherit,
-        &protoc_environment,
-      ),
-      extension_request(
-        &context,
-        "cargo",
-        &[
-          "check",
-          "--manifest-path",
-          &manifest,
-          "--features",
-          "flamegraph,prost-codec",
-          "--all-targets",
-          "--locked",
+          "check", "--manifest-path", &manifest, "--features", "flamegraph,prost-codec", "--all-targets", "--locked",
         ],
         ToolColor::CargoGlobal,
         OutputPolicy::Inherit,
@@ -612,28 +582,14 @@ mod tests {
             &context,
             "cargo",
             &[
-              "tree",
-              "--manifest-path",
-              &manifest,
-              "--duplicates",
-              "--locked",
-              "--target",
-              "all",
-              "--all-features",
+              "tree", "--manifest-path", &manifest, "--duplicates", "--locked", "--target", "all", "--all-features",
               "--no-default-features",
             ],
             ToolColor::CargoGlobal,
             OutputPolicy::Inherit,
             &[],
           ),
-          extension_request(
-            &context,
-            "just",
-            &["audit"],
-            ToolColor::EnvOnly,
-            OutputPolicy::Inherit,
-            &[],
-          ),
+          extension_request(&context, "just", &["audit"], ToolColor::EnvOnly, OutputPolicy::Inherit, &[]),
         ],
       "deps mode must run cargo tree and just audit without proto setup",
     )
@@ -692,12 +648,7 @@ mod tests {
       &context,
       "cargo",
       &[
-        "check",
-        "--manifest-path",
-        &manifest,
-        "--features",
-        "protobuf-codec",
-        "--locked",
+        "check", "--manifest-path", &manifest, "--features", "protobuf-codec", "--locked",
       ],
       ToolColor::CargoGlobal,
       OutputPolicy::Inherit,
@@ -751,13 +702,7 @@ mod tests {
       &success_context,
       "cargo",
       &[
-        "run",
-        "--manifest-path",
-        &manifest,
-        "--example",
-        "profile_proto_with_prost",
-        "--features",
-        "prost-codec",
+        "run", "--manifest-path", &manifest, "--example", "profile_proto_with_prost", "--features", "prost-codec",
       ],
       ToolColor::CargoGlobal,
       OutputPolicy::Inherit,
@@ -816,10 +761,7 @@ mod tests {
       &protoc_environment,
     );
     failed_example.current_dir = Some(output_dir.clone());
-    failure_events.extend([
-      EffectEvent::CreateDirAll(output_dir),
-      EffectEvent::Process(failed_example),
-    ]);
+    failure_events.extend([EffectEvent::CreateDirAll(output_dir), EffectEvent::Process(failed_example)]);
     ensure(
       failure_recorder.events() == failure_events,
       "a failed first example must prevent the second directory preparation and process request",

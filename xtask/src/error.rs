@@ -14,6 +14,6 @@ pub(crate) enum ProjectError {
 /// Preserve a repository workflow diagnostic through the shared runner error.
 pub(crate) fn workflow(message: impl Into<String>) -> template_core::CoreError {
   template_core::CoreError::workflow(ProjectError::Workflow {
-    message: message.into(),
+    message: message.into()
   })
 }
