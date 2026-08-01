@@ -114,7 +114,7 @@ pub(crate) fn execute(context: &CommandContext, args: Args) -> template_core::Re
   run_steps(context, &root, &steps)
 }
 
-/// Registry entry point referenced from `xtask/src/extensions.rs`.
+/// Registry entry point referenced from `stask/src/extensions.rs`.
 #[must_use]
 #[allow(
   clippy::single_call_fn,

@@ -16,7 +16,7 @@ pub mod workspace;
 /// Run the guarded repository-specific extension surface.
 #[must_use]
 pub fn run() -> ExitCode {
-  template_xtask::run_with_extensions(extensions::commands())
+  template_stask::run_with_extensions(extensions::commands())
 }
 
 #[cfg(test)]
@@ -33,7 +33,7 @@ mod tests {
   fn extension_registry_exposes_the_local_x_router() -> Result<(), TestFailure> {
     let command_set = ensure_ok(extensions::commands(), "the local extension registry must build")?;
     ensure(
-      command_set.surface() == CommandSurface::XtaskExtension,
+      command_set.surface() == CommandSurface::StaskExtension,
       "the local command set must remain on the extension surface",
     )?;
 

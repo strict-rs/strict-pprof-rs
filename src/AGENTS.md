@@ -4,7 +4,7 @@ This directory is the `pprof` library implementation. `backtrace/` is a distinct
 
 ## Current strict migration state
 
-The repository now has template-managed strict policy files including `clippy.toml`, `deny.toml`, `dupes.toml`, and workspace lint declarations in the root `Cargo.toml`. `xtask` is opted into `[lints] workspace = true`; the main `pprof` crate is intentionally not opted in yet. Do not enable the main-crate lint opt-in as incidental cleanup while working in `src/`; that is a separate planned wave after the current gates are green.
+The repository now has template-managed strict policy files including `clippy.toml`, `deny.toml`, `dupes.toml`, and workspace lint declarations in the root `Cargo.toml`. `stask` is opted into `[lints] workspace = true`; the main `pprof` crate is intentionally not opted in yet. Do not enable the main-crate lint opt-in as incidental cleanup while working in `src/`; that is a separate planned wave after the current gates are green.
 
 ## Signal-handler boundary
 

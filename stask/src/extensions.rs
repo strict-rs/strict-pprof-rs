@@ -39,8 +39,8 @@ impl ProjectCommand {
 ///
 /// Returns a typed registration error if either nested command or the
 /// controlled `x` router metadata is invalid.
-pub fn commands() -> template_xtask::Result<CommandSet> {
-  template_xtask::registry(
+pub fn commands() -> template_stask::Result<CommandSet> {
+  template_stask::registry(
     "strict-pprof extensions",
     vec![matrix::command()?, proto::command()?],
     ProjectCommand::run,
